@@ -19,7 +19,7 @@ An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC
 Requires Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/YOUR-ORG/storage-log-ai-analyzer.git
+git clone https://github.com/darisisuresh/storage-log-ai-analyzer.git
 cd storage-log-ai-analyzer
 python -m venv .venv
 source .venv/bin/activate
@@ -56,13 +56,17 @@ Vendor formats vary by product and software release. Unknown lines are still ret
 ## CLI
 
 ```text
-storage-log-analyzer analyze PATH [--vendor auto|pure|emc|hpe]
-                                    [--format text|json|markdown]
-                                    [--output FILE] [--ai]
+storage-log-analyzer analyze PATH [--vendor auto|pure|emc|hpe] [--ai]
+storage-log-analyzer summary PATH [--format text|json]
+storage-log-analyzer validate PATH [--strict]
+storage-log-analyzer redact FILE --output SANITIZED_FILE
+storage-log-analyzer rules [--format text|json]
 storage-log-analyzer vendors
 ```
 
 The input path can be one file or a directory. Directory scanning includes `.log`, `.txt`, `.json`, `.jsonl`, and `.csv` files.
+
+See the complete [operator procedure](docs/USAGE.md) for log collection, validation, offline analysis, safe redaction, AI setup, automation exit codes, and incident triage.
 
 ## Architecture
 

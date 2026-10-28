@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from storage_log_analyzer.ingest import parse_file
+from storage_log_analyzer.cli import _should_fail
 from storage_log_analyzer.privacy import redact
 from storage_log_analyzer.rules import evaluate
 from storage_log_analyzer.vendors import detect_vendor
@@ -37,6 +38,11 @@ class AnalyzerTests(unittest.TestCase):
             path.write_text("Pure Storage FlashArray warning\nDell EMC PowerStore error\nHPE Alletra critical\n")
             events = parse_file(path)
         self.assertEqual([event.vendor for event in events], ["pure", "emc", "hpe"])
+
+    def test_failure_threshold(self):
+        self.assertTrue(_should_fail("critical", "high"))
+        self.assertFalse(_should_fail("medium", "high"))
+        self.assertFalse(_should_fail("critical", "never"))
 
 
 if __name__ == "__main__":
