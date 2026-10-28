@@ -1,0 +1,5 @@
+2026-10-27T10:15:22Z Pure Storage FlashArray WARNING capacity pool is 91% used
+2026-10-27T10:17:03Z Dell EMC PowerStore ERROR FC port link down on node A
+2026-10-27T10:19:41Z HPE Alletra CRITICAL drive 7 failed; protection is degraded
+2026-10-27T10:22:09Z Pure Storage FlashArray ERROR replication protection group failed
+2026-10-27T10:24:18Z Dell EMC PowerStore WARNING authentication failed for maintenance user from 192.0.2.10

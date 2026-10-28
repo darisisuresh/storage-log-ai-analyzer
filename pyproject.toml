@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "storage-log-ai-analyzer"
+version = "0.1.0"
+description = "Vendor-aware storage log monitoring and optional AI-assisted incident analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Storage Log AI Analyzer contributors"}]
+keywords = ["storage", "logs", "monitoring", "pure-storage", "dell-emc", "hpe", "ai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: System :: Monitoring",
+]
+dependencies = []
+
+[project.optional-dependencies]
+ai = ["openai>=1.40,<3"]
+dev = ["ruff>=0.6"]
+
+[project.scripts]
+storage-log-analyzer = "storage_log_analyzer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
