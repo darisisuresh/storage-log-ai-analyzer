@@ -16,6 +16,11 @@ class Event:
     line: int
     device: str | None = None
     resource: str = ""
+    timestamp_original: str | None = None
+    timestamp_status: str = "missing"
+    format_error: str | None = None
+    vendor_source: str = "unknown"
+    context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -35,6 +40,13 @@ class Finding:
     devices: list[str] = field(default_factory=list)
     first_seen: str | None = None
     last_seen: str | None = None
+    unique_event_count: int = 0
+    duplicate_count: int = 0
+    severity_basis: str = "rule_default"
+    replication_gap_seconds: float | None = None
+    max_replication_gap_seconds: float | None = None
+    duration_seconds: float | None = None
+    finding_ref: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -48,6 +60,10 @@ class AnalysisReport:
     severities: dict[str, int]
     findings: list[Finding]
     ai_assessment: str | None = None
+    ai_status: str = "disabled"
+    ai_error: str | None = None
+    ai_details: dict[str, Any] | None = None
+    diagnostics: dict[str, int] = field(default_factory=dict)
 
     @property
     def risk(self) -> str:

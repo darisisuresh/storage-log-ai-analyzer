@@ -2,18 +2,41 @@ Overall risk: CRITICAL
 Events: 5 | Files: 1
 Vendors: pure=2, emc=2, hpe=1
 
-[OPEN] [CRITICAL] STO-001 Drive or media failure (1 occurrences; 1 incidents)
+Diagnostics: {"source_scoped_identity": 5, "timestamp_valid": 5, "vendor_message": 5}
+
+[OPEN] [CRITICAL] F1 STO-001 Drive or media failure
+1 active-state event(s); 1 unique; 0 repeated; 1 device/resource identities. Severity basis: rule_default.
+UTC range: 2026-10-27T10:19:41+00:00 to 2026-10-27T10:19:41+00:00.
+Observed current-cycle duration: 0s.
   - Identify the affected drive and protection state.
   - Open a vendor support case if redundancy is reduced.
-[OPEN] [HIGH] SEC-001 Authentication failure (1 occurrences; 1 incidents)
+
+[OPEN] [HIGH] F2 SEC-001 Authentication failure
+1 active-state event(s); 1 unique; 0 repeated; 1 device/resource identities. Severity basis: rule_default.
+UTC range: 2026-10-27T10:24:18+00:00 to 2026-10-27T10:24:18+00:00.
+Observed current-cycle duration: 0s.
   - Validate the source and targeted account.
   - Rotate exposed credentials and review administrative audit logs.
-[OPEN] [HIGH] STO-002 Storage path or port failure (1 occurrences; 1 incidents)
+
+[OPEN] [HIGH] F3 STO-002 Storage path or port failure
+1 active-state event(s); 1 unique; 0 repeated; 1 device/resource identities. Severity basis: rule_default.
+UTC range: 2026-10-27T10:17:03+00:00 to 2026-10-27T10:17:03+00:00.
+Observed current-cycle duration: 0s.
   - Verify multipathing and fabric health.
   - Check switch, SFP, cable, and host HBA events.
-[OPEN] [HIGH] STO-003 Capacity is critically high (1 occurrences; 1 incidents)
+
+[OPEN] [HIGH] F4 STO-003 Capacity is critically high
+1 active-state event(s); 1 unique; 0 repeated; 1 device/resource identities. Severity basis: rule_default.
+UTC range: 2026-10-27T10:15:22+00:00 to 2026-10-27T10:15:22+00:00.
+Observed current-cycle duration: 0s.
   - Stop nonessential growth and confirm thin-provisioning risk.
   - Reclaim or add capacity before writes are affected.
-[OPEN] [HIGH] STO-005 Replication or snapshot failure (1 occurrences; 1 incidents)
+
+[OPEN] [HIGH] F5 STO-005 Replication or snapshot failure
+1 active-state event(s); 1 unique; 0 repeated; 1 device/resource identities. Severity basis: rule_default.
+UTC range: 2026-10-27T10:22:09+00:00 to 2026-10-27T10:22:09+00:00.
+Observed current-cycle duration: 0s.
   - Measure the recovery-point gap.
   - Restore replication and verify the latest usable recovery point.
+
+AI status: disabled

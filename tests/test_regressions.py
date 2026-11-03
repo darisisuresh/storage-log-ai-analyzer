@@ -14,6 +14,13 @@ from storage_log_analyzer.ingest import parse_file
 from storage_log_analyzer.models import AnalysisReport, Finding
 
 
+def valid_ai_output(ref='F1', action='OTHER:A1'):
+    return json.dumps({'items': [{'finding_ref': ref, 'evidence_refs': [ref],
+        'observation_code': 'active_rule_match', 'action_codes': [action],
+        'confidence': 'not_calibrated', 'uncertainty_codes': ['aggregate_only', 'identity_omitted', 'root_cause_unverified'],
+        'requires_operator_approval': True, 'validation_required': True}]})
+
+
 class InputRegressionTests(unittest.TestCase):
     def parse(self, suffix, content, vendor='auto'):
         with tempfile.TemporaryDirectory() as directory:
@@ -88,8 +95,8 @@ class AIRegressionTests(unittest.TestCase):
         with patch.dict(os.environ, {'OPENAI_API_KEY': 'test-placeholder'}):
             with patch('openai.OpenAI') as factory:
                 client = factory.return_value.__enter__.return_value
-                client.responses.create.return_value = SimpleNamespace(output_text='Assessment')
-                self.assertEqual(assess(self.report()), 'Assessment')
+                client.responses.create.return_value = SimpleNamespace(output_text=valid_ai_output())
+                self.assertIn('F1', assess(self.report()))
                 kwargs = client.responses.create.call_args.kwargs
                 self.assertFalse(kwargs['store'])
                 self.assertNotIn('admin@example.com', kwargs['input'])
@@ -133,15 +140,15 @@ class SDKTransportTests(unittest.TestCase):
                 "model": "test-model", "status": "completed",
                 "output": [{"id": "msg_test", "type": "message", "role": "assistant",
                             "status": "completed", "content": [{"type": "output_text",
-                            "text": "Mocked SDK assessment", "annotations": []}]}]
+                            "text": valid_ai_output(action="STO-001:A1"), "annotations": []}]}]
             })
 
         client = openai.OpenAI(api_key="test-placeholder", http_client=httpx2.Client(
             transport=httpx2.MockTransport(respond)
         ))
-        report = AnalysisReport([], 0, {}, {}, [])
+        report = AnalysisReport([], 1, {}, {}, [Finding("STO-001", "critical", "availability", "Drive failure")])
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-placeholder"}):
             with patch("openai.OpenAI", return_value=client):
-                self.assertEqual(assess(report, "test-model"), "Mocked SDK assessment")
+                self.assertIn("F1", assess(report, "test-model"))
         self.assertFalse(requests[0]["store"])
         self.assertEqual(requests[0]["model"], "test-model")

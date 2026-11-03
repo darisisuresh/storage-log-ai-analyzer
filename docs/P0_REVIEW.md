@@ -1,5 +1,7 @@
 # P0 review remediation — v0.3.0
 
+Historical v0.3.0 evidence. Subsequent P1 remediation is documented in [P1_REVIEW.md](P1_REVIEW.md).
+
 Reviewed against the user-supplied ChatGPT review of v0.2.0. This document records synthetic local tests; it does not certify production reliability or detection accuracy.
 
 ## Confirmed baseline

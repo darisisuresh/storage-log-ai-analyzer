@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import csv
+import os
 import json
 import re
+import sqlite3
+import tempfile
+from contextlib import closing, contextmanager
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
@@ -10,6 +14,7 @@ import ijson
 from ijson.common import ObjectBuilder
 
 from .models import Event
+from .timestamps import normalize
 from .vendors import detect_component, detect_product, detect_severity, detect_vendor
 
 SUPPORTED_SUFFIXES = {'.log', '.txt', '.json', '.jsonl', '.csv'}
@@ -130,17 +135,18 @@ class _Lines:
         return line
 
 
-def _records(path: Path) -> Iterable[tuple[int, str, dict | None]]:
+def _records(path: Path, strict_format=False, on_format_error=None) -> Iterable:
     try:
         if path.suffix.lower() == '.json':
-            yield from _json_records(path)
+            for record in _json_records(path):
+                yield (*record, None)
             return
         with path.open(encoding='utf-8', errors='replace', newline='') as handle:
             lines = _Lines(handle)
             if path.suffix.lower() == '.csv':
                 reader = csv.DictReader(lines)
                 for row in reader:
-                    yield reader.line_num, ' '.join(str(v) for v in row.values()), row
+                    yield reader.line_num, ' '.join(str(v) for v in row.values()), row, None
                     lines.size = 0
                 return
             for number, raw in enumerate(lines, 1):
@@ -148,14 +154,20 @@ def _records(path: Path) -> Iterable[tuple[int, str, dict | None]]:
                 line = raw.strip()
                 if not line:
                     continue
-                row = None
+                row, format_error = None, None
                 if path.suffix.lower() == '.jsonl':
                     try:
                         value = json.loads(line)
                         row = value if isinstance(value, dict) else None
-                    except json.JSONDecodeError:
-                        pass
-                yield number, line, row
+                        if row is None:
+                            format_error = 'non_object_jsonl'
+                    except (json.JSONDecodeError, RecursionError):
+                        format_error = 'malformed_jsonl'
+                    if format_error and on_format_error:
+                        on_format_error(path, number, format_error, line)
+                    if format_error and strict_format:
+                        raise ValueError(f'{path}:{number}: {format_error}; expected one JSON object per nonempty line')
+                yield number, line, row, format_error
     except (ijson.JSONError, csv.Error, RecursionError) as exc:
         raise ValueError(f'{path}: invalid or excessively nested input ({type(exc).__name__})') from None
 
@@ -167,7 +179,8 @@ def _identity(row, text):
         device = match[1]
     if not device:
         match = SYSLOG_HOST.search(text)
-        device = match[1] if match else None
+        candidate = match[1] if match else None
+        device = candidate if candidate and candidate.casefold() not in {'disk', 'drive', 'controller', 'replication', 'pure', 'dell', 'hpe', 'error', 'warning', 'info', 'critical'} else None
     resource = ''
     for key in ('resource', 'disk_id', 'drive_id', 'component_id'):
         if row.get(key) is not None:
@@ -183,22 +196,28 @@ def _identity(row, text):
     return device, resource
 
 
-def iter_file(path: Path, vendor_override: str = 'auto') -> Iterator[Event]:
-    for number, text, row in _records(path):
+def iter_file(path: Path, vendor_override: str = 'auto', *, strict_format=False, assume_timezone='UTC', assume_year=None, on_format_error=None) -> Iterator[Event]:
+    for number, text, row, format_error in _records(path, strict_format, on_format_error):
         row = row or {}
         message = str(row.get('message') or row.get('msg') or row.get('description') or text)
         timestamp_match = TIMESTAMP.search(text)
-        timestamp = str(row.get('timestamp') or row.get('time') or (timestamp_match['ts'] if timestamp_match else '')) or None
+        original = row.get('timestamp', row.get('time', timestamp_match['ts'] if timestamp_match else None))
+        timestamp, timestamp_status = normalize(original, assume_timezone, assume_year)
         raw_severity = str(row.get('severity') or row.get('level') or '').lower()
         severity = raw_severity if raw_severity in {'critical', 'high', 'medium', 'low'} else detect_severity(text)
         explicit_vendor = str(row.get('vendor', '')).lower()
-        vendor = explicit_vendor if explicit_vendor in {'pure', 'emc', 'hpe'} else detect_vendor(message)
+        vendor = explicit_vendor if explicit_vendor in {'pure', 'emc', 'hpe'} else detect_vendor(explicit_vendor)
+        vendor_source = 'explicit' if vendor != 'unknown' else 'unknown'
+        if vendor == 'unknown':
+            vendor = detect_vendor(message)
+            vendor_source = 'message' if vendor != 'unknown' else 'unknown'
         if vendor_override != 'auto':
             vendor = vendor_override
+            vendor_source = 'override'
         device, resource = _identity(row, message)
-        if len(device or "") > 256 or len(resource) > 256 or len(timestamp or "") > 128:
+        if len(device or "") > 256 or len(resource) > 256 or len(str(original or "")) > 128:
             raise ValueError(f"{path}:{number}: oversized identity or timestamp field")
-        yield Event(timestamp, vendor, detect_product(message), severity, detect_component(message), message, str(path), number, device, resource)
+        yield Event(timestamp, vendor, detect_product(message), severity, detect_component(message), message, str(path), number, device, resource, str(original) if original is not None else None, timestamp_status, format_error, vendor_source, _context(row, message, assume_timezone, assume_year))
 
 
 def parse_file(path: Path, vendor_override: str = 'auto') -> list[Event]:
@@ -212,6 +231,117 @@ def parse_file(path: Path, vendor_override: str = 'auto') -> list[Event]:
     return result
 
 
-def ingest(path: Path, vendor_override: str = 'auto'):
+
+def _context(row, message, zone, year):
+    context = {}
+    redundancy = str(row.get('redundancy', '')).lower()
+    if redundancy in {'healthy', 'lost', 'degraded'}:
+        context['redundancy'] = redundancy
+    elif re.search(r'\bredundancy\s+(?:is\s+)?healthy\b', message, re.I):
+        context['redundancy'] = 'healthy'
+    elif re.search(r'\b(?:redundancy lost|no redundancy)\b', message, re.I):
+        context['redundancy'] = 'lost'
+    impact = row.get('service_impact')
+    if type(impact) is bool:
+        context['service_impact'] = impact
+    elif re.search(r'\bno service impact\b', message, re.I):
+        context['service_impact'] = False
+    elif re.search(r'\b(service unavailable|host access lost|all paths lost|no active paths)\b', message, re.I):
+        context['service_impact'] = True
+    group = row.get('protection_group')
+    if group is not None:
+        if len(str(group)) > 256:
+            raise ValueError('Protection group exceeds 256 characters')
+        context['protection_group'] = str(group)
+    value = row.get('last_successful_replication')
+    if value is not None:
+        stamp, status = normalize(value, zone, year)
+        context['last_successful_replication'] = stamp
+        context['replication_timestamp_status'] = status
+    lag = row.get('replication_lag_seconds')
+    if type(lag) in (int, float) and 0 <= lag < 10**12:
+        context['replication_lag_seconds'] = lag
+    return context
+
+
+def load_inventory(path):
+    if path is None:
+        return {}
+    if Path(path).stat().st_size > MAX_RECORD:
+        raise ValueError('Inventory exceeds 1 MiB')
+    value = json.loads(Path(path).read_text(encoding='utf-8'))
+    if not isinstance(value, dict) or set(value) != {'devices'} or not isinstance(value['devices'], dict):
+        raise ValueError('Inventory must be an object with a devices mapping')
+    if len(value['devices']) > 10000:
+        raise ValueError('Inventory exceeds 10000 devices')
+    for device, metadata in value['devices'].items():
+        if len(device) > 256 or not isinstance(metadata, dict) or set(metadata) != {'vendor'} or not isinstance(metadata['vendor'], str) or metadata['vendor'] not in {'pure', 'emc', 'hpe'}:
+            raise ValueError('Each inventory device requires one canonical vendor: pure, emc, or hpe')
+    return value['devices']
+
+
+def ingest(path: Path, vendor_override: str = 'auto', *, strict_format=False, assume_timezone='UTC', assume_year=None, inventory=None, quarantine=None):
     files = discover(path)
-    return files, (event for file in files for event in iter_file(file, vendor_override))
+    configured = load_inventory(inventory)
+    if inventory:
+        files = [file for file in files if file.resolve() != Path(inventory).resolve()]
+    if quarantine:
+        destination = Path(quarantine).resolve()
+        if any(destination == file.resolve() for file in files) or (path.is_dir() and path.resolve() in destination.parents):
+            raise ValueError('Quarantine must be outside the input directory and cannot overwrite an input')
+
+    def _events():
+        with tempfile.TemporaryDirectory(prefix='storage-vendors-') as folder:
+            with closing(sqlite3.connect(str(Path(folder) / 'vendors.db'))) as db, db, _quarantine(quarantine) as rejected:
+                db.execute('PRAGMA cache_size=-1024')
+                db.execute('CREATE TABLE vendors (device TEXT PRIMARY KEY, vendor TEXT)')
+                for file in files:
+                    for event in iter_file(file, vendor_override, strict_format=strict_format, assume_timezone=assume_timezone, assume_year=assume_year, on_format_error=rejected):
+                        if event.device and event.vendor_source != 'override':
+                            device = event.device.casefold()
+                            entry = configured.get(event.device, configured.get(device))
+                            if entry and event.vendor != 'unknown' and entry['vendor'] != event.vendor:
+                                event.context['vendor_conflict'] = True
+                            if entry and event.vendor_source != 'explicit':
+                                event.vendor, event.vendor_source = entry['vendor'], 'inventory'
+                            elif event.vendor != 'unknown':
+                                old = db.execute('SELECT vendor FROM vendors WHERE device=?', (device,)).fetchone()
+                                learned = event.vendor if not old or old[0] == event.vendor else 'unknown'
+                                db.execute('INSERT OR REPLACE INTO vendors VALUES (?,?)', (device, learned))
+                            else:
+                                old = db.execute('SELECT vendor FROM vendors WHERE device=?', (device,)).fetchone()
+                                if old and old[0] != 'unknown':
+                                    event.vendor, event.vendor_source = old[0], 'same_device_history'
+                        yield event
+    def events():
+        try:
+            yield from _events()
+        except sqlite3.Error as exc:
+            raise RuntimeError(f'Vendor state storage failed ({type(exc).__name__}); check temporary disk space') from None
+    return files, events()
+
+
+@contextmanager
+def _quarantine(destination):
+    if not destination:
+        yield None
+        return
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=destination.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+
+            def rejected(path, number, error, record):
+                handle.write(json.dumps({'source': str(path), 'line': number, 'error': error, 'record': record}) + '\n')
+
+            try:
+                yield rejected
+            finally:
+                handle.flush()
+        os.replace(temporary, destination)
+    finally:
+        # Preserve collected records even when strict-format raises at the first rejection.
+        if temporary is not None and temporary.exists():
+            os.replace(temporary, destination)

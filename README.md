@@ -4,7 +4,7 @@
 
 # Storage Log AI Analyzer
 
-[![Version 0.3.0](https://img.shields.io/badge/Version-0.3.0-c8ff42)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.3.0)
+[![Version 0.4.0](https://img.shields.io/badge/Version-0.4.0-c8ff42)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.4.0)
 [![CI](https://github.com/darisisuresh/storage-log-ai-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/darisisuresh/storage-log-ai-analyzer/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -18,9 +18,20 @@
 
 An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC, and HPE storage systems. It normalizes different log formats, detects operational and security risks locally, and can optionally ask an AI model for a concise incident assessment.
 
-**How to use the tool:** [Read the user guide](docs/USER_GUIDE.md) · [Download the PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.3.0.pdf)
+**How to use the tool:** [Read the user guide](docs/USER_GUIDE.md) · [Download the PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.4.0.pdf)
 
 ## Updates
+
+### v0.4.0 — P1 fixes: reliable input, chronology, severity, and AI
+
+- **Input and identity:** strict JSONL validation, optional quarantine, and per-device inventory/history mapping.
+- **Chronology:** original timestamps retained, UTC normalization with recorded assumptions, and disk-backed ordering across files before recovery transitions.
+- **Incident context:** duplicate accounting, explained severity decisions, and measured replication lag/resync tracking with an explicit RPO target.
+- **AI:** structured, reference-checked output with a token budget. Unsupported claims are rejected; AI failures preserve the local report.
+- **Package:** added `tzdata` for portable timezone support.
+
+[Release notes](docs/releases/v0.4.0.md) · [P1 evidence and limitations](docs/P1_REVIEW.md) · [User guide](docs/USER_GUIDE.md)
+
 
 ### v0.3.0 — P0 fixes from the independent review
 
@@ -38,7 +49,7 @@ An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC
 - **Updated packages:** OpenAI SDK 3.42.1+, Setuptools 84.2.1+, Ruff 0.17.3, and Build 1.6.1.
 - **More reliable input handling:** fixed forced-vendor detection, JSON/JSONL edge cases, empty input, and file-access errors.
 - **Safer optional AI behavior:** bounded requests, disabled response storage, and errors that do not echo provider payloads.
-- **New user guide:** [installation-to-report walkthrough](docs/USER_GUIDE.md), with a [downloadable PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.3.0.pdf).
+- **New user guide:** [installation-to-report walkthrough](docs/USER_GUIDE.md), with a [downloadable PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.4.0.pdf).
 - **Version reporting:** run `storage-log-analyzer --version`.
 - **Verification:** regression tests, an SDK test with mocked transport, and CI for Python 3.10, 3.12, and 3.14 with and without AI extras.
 
@@ -74,8 +85,10 @@ Requires **Python 3.10 or newer**. Dependencies are declared in [pyproject.toml]
 
 | Package | Version requirement | Used for | Install group |
 |---|---|---|---|
-| `storage-log-ai-analyzer` | `0.3.0` (alpha prerelease) | The command-line analyzer | Main package |
+| `storage-log-ai-analyzer` | `0.4.0` (alpha prerelease) | The command-line analyzer | Main package |
 | `ijson` | `>=3.6.0,<4` | Streaming JSON parsing | Required |
+| `tzdata` | `>=2026.6` | Portable IANA timezone data | Required |
+| `tzdata` | `>=2026.6` | Portable IANA timezone support | Required |
 | `openai` | `>=3.42.1,<4` | Optional AI assessment | `ai` |
 | `ruff` | `==0.17.3` | Code checks | `dev` |
 | `build` | `==1.6.1` | Wheel and source-distribution builds | `dev` |
@@ -101,21 +114,21 @@ python -m pip install -e '.[dev]'
 python -m pip install -e '.[ai,dev]'
 ```
 
-### Download v0.3.0 packages
+### Download v0.4.0 packages
 
-- [Python wheel (.whl)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/download/v0.3.0/storage_log_ai_analyzer-0.3.0-py3-none-any.whl)
-- [Source distribution (.tar.gz)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/download/v0.3.0/storage_log_ai_analyzer-0.3.0.tar.gz)
-- [All release files and notes](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.3.0)
+- [Python wheel (.whl)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/download/v0.4.0/storage_log_ai_analyzer-0.4.0-py3-none-any.whl)
+- [Source distribution (.tar.gz)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/download/v0.4.0/storage_log_ai_analyzer-0.4.0.tar.gz)
+- [All release files and notes](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.4.0)
 
 After downloading the wheel, install it from its download directory:
 
 ```bash
-python -m pip install ./storage_log_ai_analyzer-0.3.0-py3-none-any.whl
+python -m pip install ./storage_log_ai_analyzer-0.4.0-py3-none-any.whl
 storage-log-analyzer --version
 python -m pip check
 ```
 
-For AI support with the downloaded wheel, use `python -m pip install './storage_log_ai_analyzer-0.3.0-py3-none-any.whl[ai]'`.
+For AI support with the downloaded wheel, use `python -m pip install './storage_log_ai_analyzer-0.4.0-py3-none-any.whl[ai]'`.
 
 Packages are distributed through GitHub Releases. They have not been published to PyPI or the GitHub Packages registry. See the [user guide](docs/USER_GUIDE.md) for platform-specific setup and the [changelog](CHANGELOG.md) for package updates.
 
@@ -189,6 +202,16 @@ The input path can be one file or a directory. Directory scanning includes `.log
 
 See the complete [operator procedure](docs/USAGE.md) for log collection, validation, offline analysis, safe redaction, AI setup, automation exit codes, and incident triage.
 
+### Input and time controls
+
+```bash
+storage-log-analyzer validate /path/to/logs --strict-format
+storage-log-analyzer analyze /path/to/logs --inventory samples/device-inventory.json --assume-timezone UTC
+storage-log-analyzer analyze /path/to/logs --rpo-target-seconds 300 --format json -o reports/incident.json
+```
+
+Use a real inventory matching your host identifiers; the bundled example is synthetic. `--quarantine` must point outside the input directory. Set `STORAGE_LOG_AI_MAX_OUTPUT_TOKENS` only when changing the default 4096-token AI budget. See the user guide for the context-field schema and uncertainty rules.
+
 ## Architecture
 
 ```mermaid
@@ -210,7 +233,7 @@ Normalized event fields include timestamp, vendor, product, severity, component,
 | Resource | What it covers |
 |---|---|
 | [User guide](docs/USER_GUIDE.md) | Installation, commands, examples, privacy, automation, and troubleshooting |
-| [PDF user guide](docs/Storage_Log_AI_Analyzer_User_Guide_v0.3.0.pdf) | Downloadable usage document for v0.3.0 |
+| [PDF user guide](docs/Storage_Log_AI_Analyzer_User_Guide_v0.4.0.pdf) | Downloadable usage document for v0.4.0 |
 | [Project website](https://sureshkumardarisi.com/#tools) | Tool overview and author profile |
 | [Operator procedure](docs/USAGE.md) | Installation, log collection, validation, redaction, AI setup, and automation |
 | [Contributing guide](CONTRIBUTING.md) | Vendor rules, sanitized fixtures, and contributions |
@@ -235,7 +258,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for adding vendor rules and sanitized fix
 
 ## Limits and incident state
 
-Reports retain resolved history but exclude it from current risk. Correlation uses explicit device/resource identity when available and source-file scope otherwise. Supply chronological logs: global cross-file temporal sorting and vendor-specific recovery semantics remain future work. Evidence/device samples are limited to five per rule/state group; counts remain exact. See [limits and benchmark evidence](docs/P0_REVIEW.md).
+Reports retain resolved history but exclude it from current risk. Correlation uses explicit device/resource identity when available and source-file scope otherwise. Events with usable timestamps are ordered across files before transitions; missing/invalid clock data is diagnosed and cannot silently resolve a timed failure. Vendor-specific semantic validation still requires operator review. Evidence/device samples are limited to five per rule/state group; counts remain exact. See [limits and benchmark evidence](docs/P0_REVIEW.md).
 
 ## Limitations
 

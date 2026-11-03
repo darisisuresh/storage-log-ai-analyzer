@@ -17,3 +17,12 @@ Run analysis with the least privileges needed to read the intended log exports. 
 ## Fixes
 
 Include the exact commit or package version in a report so the issue can be reproduced. Check the default branch for fixes before retesting. No response-time or long-term-support commitment is implied.
+
+
+## Structured AI and local parsing controls (v0.4.0)
+
+AI is limited to approved local finding references and action codes. Unknown references, contradictory states, extra claims, invented confidence scores and incomplete output are rejected before rendering. Raw log text is excluded from both prompt and schema. The output-token budget is bounded; failures preserve the local report.
+
+`--quarantine` is opt-in and writes raw rejected records to a private local file outside the input directory. Do not share it without review. Device inventory is operator-supplied local configuration, not an authenticated source of business impact. UTC assumptions and invalid timestamps are visible in diagnostics.
+
+Scratch databases are cleaned on normal completion and handled exceptions. Abrupt termination can leave private temporary directories; they are not encrypted evidence archives.

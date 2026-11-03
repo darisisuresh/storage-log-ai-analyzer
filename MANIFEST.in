@@ -1,4 +1,4 @@
 include CHANGELOG.md CITATION.cff SECURITY.md CODE_OF_CONDUCT.md CONTRIBUTING.md
 recursive-include docs *.md *.svg *.txt *.pdf
-recursive-include samples *.log
+recursive-include samples *.log *.json
 recursive-include scripts *.py

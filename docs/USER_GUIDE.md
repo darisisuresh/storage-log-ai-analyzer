@@ -1,8 +1,8 @@
 # Storage Log AI Analyzer — User Guide
 
-Version 0.3.0 · Suresh Kumar Darisi
+Version 0.4.0 · Suresh Kumar Darisi
 
-[Project website](https://sureshkumardarisi.com/#tools) · [GitHub](https://github.com/darisisuresh/storage-log-ai-analyzer) · [Download PDF](Storage_Log_AI_Analyzer_User_Guide_v0.3.0.pdf)
+[Project website](https://sureshkumardarisi.com/#tools) · [GitHub](https://github.com/darisisuresh/storage-log-ai-analyzer) · [Download PDF](Storage_Log_AI_Analyzer_User_Guide_v0.4.0.pdf)
 
 ## 1. What the tool does
 
@@ -29,7 +29,7 @@ python -m pip install -e .
 storage-log-analyzer --version
 ```
 
-Expected version output: `storage-log-analyzer 0.3.0`. Incremental JSON parsing requires `ijson>=3.6.0,<4`, installed automatically. SQLite incident state uses the Python standard library. To reproduce this release, check out tag `v0.3.0` before installing.
+Expected version output: `storage-log-analyzer 0.4.0`. Required packages `ijson>=3.6.0,<4` and `tzdata>=2026.6` are installed automatically for incremental JSON parsing and portable IANA timezone support. SQLite incident state uses the Python standard library. To reproduce this release, check out tag `v0.4.0` before installing.
 
 ## 4. Install on Windows PowerShell
 
@@ -81,9 +81,9 @@ storage-log-analyzer validate "/path/to/storage-logs" --strict
 storage-log-analyzer summary "/path/to/storage-logs" --format json -o reports/summary.json
 ```
 
-Strict validation returns exit code 2 when any event has an unknown vendor or severity. It is a recognition check, not a guarantee that every vendor field is understood. Empty or unreadable input returns exit code 1.
+Strict validation rejects malformed/non-object JSONL with exit code 1 and a file/line error. It returns exit code 2 for unknown vendors/severities or present-but-unusable timestamps. It is a recognition check, not a guarantee that every vendor field is understood. Empty or unreadable input returns exit code 1.
 
-To force a known vendor, use `--vendor pure`, `--vendor emc`, or `--vendor hpe`. Version 0.3.0 gives this explicit choice precedence over text detection.
+To force a known vendor, use `--vendor pure`, `--vendor emc`, or `--vendor hpe`. Version 0.4.0 gives this explicit choice precedence over text detection.
 
 ## 8. Analyze and export reports
 
@@ -100,7 +100,7 @@ storage-log-analyzer analyze "/path/to/storage-logs" --min-severity high --fail-
 
 ## 9. Read and triage findings
 
-JSON and Markdown reports include evidence and recommended actions. The terminal report emphasizes matched rules and recommended actions. The overall risk is the highest severity among included findings that are not RESOLVED. Resolved history remains visible; recovery must match the device/source and resource identity.
+JSON and Markdown reports include evidence and recommended actions. The terminal report emphasizes matched rules and recommended actions. The overall risk is the highest severity among included findings that are not RESOLVED. Resolved history remains visible; recovery must match device/source and resource identity. Total active-state events, unique records, repeated records and identity counts are separate fields. Reopening does not create a different device/resource identity. Untimed identical failures after recovery conservatively reopen because replay cannot be distinguished from a new failure.
 
 - `STO-001`: drive or media failure.
 - `STO-002`: path or port failure.
@@ -136,9 +136,11 @@ storage-log-analyzer analyze "/path/to/storage-logs" --ai --format markdown -o r
 
 In Windows PowerShell, configure variables with `$env:OPENAI_API_KEY='your-key'` and `$env:STORAGE_LOG_AI_MODEL='gpt-5-mini'`. Do not commit real keys or copy them into issues.
 
-Model choice can also be passed with `--model`. Use a model available to your account. The tool sends only fixed rule metadata, allowlisted counts, state, and finding references. Raw log messages, evidence, source paths, device names, and arbitrary input fields are not sent. Review your data policy first. The request uses `store=False`; this disables response storage but does not guarantee zero provider retention. The SDK has a 60-second request timeout and up to two retries, so total elapsed time can exceed 60 seconds.
+Model choice can also be passed with `--model`. The model must support strict structured output. The output limit is 4096 tokens by default; set `STORAGE_LOG_AI_MAX_OUTPUT_TOKENS` to an integer from 256 to 8192 to change it. Token exhaustion is reported as an AI failure.
 
-If AI fails, check connectivity, key configuration, model access, and API quota. Run again without `--ai` to obtain the local report. No real API call is needed for the automated regression tests.
+The AI may prioritize up to eight aggregate finding groups using only supplied references and approved observation/action codes. Local validation rejects unknown evidence, contradictory states, unsupported actions, invented confidence numbers and extra claims. References identify local aggregate findings, not proof of a root cause. Confidence is explicitly uncalibrated, uncertainty is mandatory, and an operator must validate every recommendation. Use a model available to your account. The tool sends only fixed rule metadata, allowlisted counts, state, and finding references. Raw log messages, evidence, source paths, device names, and arbitrary input fields are not sent. Review your data policy first. The request uses `store=False`; this disables response storage but does not guarantee zero provider retention. The SDK has a 60-second request timeout and up to two retries, so total elapsed time can exceed 60 seconds.
+
+If AI fails, the local findings are retained with `ai_status=failed` and a safe error message. The command returns exit code 1. File output is checkpointed before the request and then updated with the AI outcome. Check connectivity, key configuration, model access, quota or output budget; run without `--ai` when you want only local analysis. No real API call is needed for the automated regression tests.
 
 ### Preview the exact AI request without contacting a provider
 
@@ -154,7 +156,9 @@ Events stream through bounded counters. A temporary SQLite database stores per-d
 
 Reports aggregate by rule/state with up to five evidence and device samples per group. Counts remain exact. The scan accepts at most 10,000 input files; records have a 1 MiB/1,048,576-character budget, JSON nesting is limited to 64, and identity fields to 256 characters. Oversized records fail explicitly. The `parse_file` Python helper is limited to 10,000 events/8 MiB text; use `iter_file` for larger inputs.
 
-Use chronologically ordered exports. UTC timestamps prevent a known older recovery from closing a newer failure, but full global reordering is not implemented. When a device is absent, identity falls back to source-file scope. An unspecified recovery does not clear an explicitly identified resource. See [P0 evidence and limits](P0_REVIEW.md).
+Usable timestamps are normalized to UTC and ordered across files in temporary SQLite storage. Original text and normalization status are retained in events and bounded local evidence. Naive timestamps use `--assume-timezone UTC` by default and record that assumption; choose a different IANA zone explicitly when appropriate. RFC3164 syslog without a year requires `--assume-year`. Ambiguous/nonexistent DST wall-clock times and invalid/date-only clocks are diagnosed rather than guessed. Untimed events retain input order after timed events; untimed recovery cannot resolve a timed active failure. When identity is absent, correlation is source-file scoped.
+
+Temporary storage is not encrypted and can grow with input size and unique identities. Cleanup occurs on normal completion and handled exceptions; abrupt process termination may leave private scratch directories. See [P1 evidence and limits](P1_REVIEW.md).
 
 ## 12. Exit codes and automation
 
@@ -186,7 +190,7 @@ python -m pip install --upgrade -e '.[ai]'
 storage-log-analyzer --version
 ```
 
-Version 0.3.0 requires OpenAI SDK 3.42.1 or newer, below 4, for the AI extra. Use a separate environment if another application needs an older SDK. GitHub release assets are available; this project has not published a package to PyPI as part of this release.
+Version 0.4.0 requires OpenAI SDK 3.42.1 or newer, below 4, for the AI extra. Use a separate environment if another application needs an older SDK. GitHub release assets are available; this project has not published a package to PyPI as part of this release.
 
 ## 14. Troubleshooting
 
@@ -200,4 +204,32 @@ Version 0.3.0 requires OpenAI SDK 3.42.1 or newer, below 4, for the AI extra. Us
 
 ## 15. Further help
 
-Run `storage-log-analyzer --help` or `storage-log-analyzer analyze --help`. See [the operator procedure](USAGE.md), [release notes](releases/v0.3.0.md), and [changelog](../CHANGELOG.md). Report ordinary bugs using the GitHub issue template with synthetic evidence. Report sensitive vulnerabilities privately to **darisi.suresh@ieee.org** as described in [SECURITY.md](../SECURITY.md).
+Run `storage-log-analyzer --help` or `storage-log-analyzer analyze --help`. See [the operator procedure](USAGE.md), [release notes](releases/v0.4.0.md), and [changelog](../CHANGELOG.md). Report ordinary bugs using the GitHub issue template with synthetic evidence. Report sensitive vulnerabilities privately to **darisi.suresh@ieee.org** as described in [SECURITY.md](../SECURITY.md).
+
+## 16. Strict parsing, device inventory, and chronology
+
+```bash
+storage-log-analyzer validate /path/to/logs --strict-format
+storage-log-analyzer analyze /path/to/logs --strict-format --quarantine /private/case/rejected.jsonl
+storage-log-analyzer analyze /path/to/logs --inventory samples/device-inventory.json --assume-timezone America/New_York --assume-year 2026
+```
+
+Quarantine contains original rejected records and must be outside the scanned directory. It is written with private file permissions and is not sent to AI. Lenient parsing remains available and records malformed/non-object JSONL counts in diagnostics.
+
+The inventory format is a JSON object with a `devices` mapping, for example `{"devices":{"array-a":{"vendor":"pure"}}}`. Use canonical `pure`, `emc` or `hpe`. Precedence is forced `--vendor`, explicit structured vendor, inventory, message hints, then consistent same-device history. Another device never supplies a vendor guess; conflicting history remains unknown and inventory conflicts are diagnosed.
+
+## 17. Contextual severity and replication
+
+Supported structured fields include `redundancy` (`healthy`, `lost`, `degraded`), boolean `service_impact`, `protection_group`, `last_successful_replication` (timestamp), and nonnegative `replication_lag_seconds`. Device identity uses `host`, `hostname`, `array`/`array_id`, or `device`/`device_id`; resource identity can use `resource`, `disk_id` or `drive_id`.
+
+```json
+{"timestamp":"2026-11-02T10:00:00Z","host":"array-a","vendor":"pure","disk_id":7,"message":"disk failure detected","redundancy":"healthy","service_impact":false,"protection_group":"pg-a"}
+```
+
+A drive failure is lowered from the conservative default only with confirmed healthy redundancy and no service impact. Multiple active drives in one explicitly supplied protection group, confirmed storage service impact or redundancy loss can raise severity. The report includes `severity_basis`; these are deterministic policies, not calibrated risk scores.
+
+```bash
+storage-log-analyzer analyze /path/to/logs --rpo-target-seconds 300 --format json -o reports/replication.json
+```
+
+An RPO target is never assumed. Lag uses an explicit `replication_lag_seconds` value or the difference between a usable event clock and `last_successful_replication`. Successful resync resets current lag, preserves the maximum observed lag, and records current-cycle duration when clocks support it. Unknown lag stays null. These observations do not establish actual data loss or continuous maximum lag between observations.

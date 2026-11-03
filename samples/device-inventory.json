@@ -1,0 +1,7 @@
+{
+  "devices": {
+    "array-a": {"vendor": "pure"},
+    "array-b": {"vendor": "emc"},
+    "array-c": {"vendor": "hpe"}
+  }
+}

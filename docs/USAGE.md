@@ -1,5 +1,7 @@
 # Operator procedure
 
+For current strict parsing, inventory, chronology, contextual severity and structured AI behavior, see the [v0.4.0 user guide](USER_GUIDE.md).
+
 This procedure covers installation, log preparation, offline analysis, AI-assisted analysis, and automation.
 
 ## 1. Install
@@ -129,6 +131,8 @@ case $? in
   2) echo "High-risk storage finding; notify the on-call team" ;;
 esac
 ```
+
+AI failures preserve local findings with `ai_status=failed` and exit code 1.
 
 Do not run AI mode unattended until secrets, retention, cost limits, and incident-response ownership are defined.
 
