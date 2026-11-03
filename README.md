@@ -48,7 +48,7 @@ To update an existing checkout, run `git pull` and `python -m pip install --upgr
 
 ## Navigate
 
-[Updates](#updates) · [Overview](#about) · [Features](#what-it-does) · [Quick start](#quick-start) · [Demo](#see-it-in-action) · [Vendors](#supported-inputs) · [Commands](#cli) · [Privacy](#security-and-privacy) · [Contributing](#contributing) · [Citation](#citation)
+[Updates](#updates) · [Overview](#about) · [Features](#what-it-does) · [Packages](#packages) · [Quick start](#quick-start) · [Demo](#see-it-in-action) · [Vendors](#supported-inputs) · [Commands](#cli) · [Privacy](#security-and-privacy) · [Contributing](#contributing) · [Citation](#citation)
 
 ## About
 
@@ -67,6 +67,57 @@ The [project website](https://sureshkumardarisi.com/#tools) introduces the tool 
 - Runs offline unless `--ai` is explicitly enabled; raw evidence is excluded from AI requests
 
 > This project is an operational aid, not a replacement for vendor support or an enterprise SIEM. Validate critical findings against the original logs.
+
+## Packages
+
+Requires **Python 3.10 or newer**. Dependencies are declared in [pyproject.toml](pyproject.toml) and installed automatically by pip.
+
+| Package | Version requirement | Used for | Install group |
+|---|---|---|---|
+| `storage-log-ai-analyzer` | `0.3.0` (alpha prerelease) | The command-line analyzer | Main package |
+| `ijson` | `>=3.6.0,<4` | Streaming JSON parsing | Required |
+| `openai` | `>=3.42.1,<4` | Optional AI assessment | `ai` |
+| `ruff` | `==0.17.3` | Code checks | `dev` |
+| `build` | `==1.6.1` | Wheel and source-distribution builds | `dev` |
+| `setuptools` | `>=84.2.1,<85` | Python package build backend | Build-time |
+
+SQLite is supplied by Python's standard library; no separate SQLite server or pip package is required. The AI SDK is optional, and ordinary analysis runs offline after installation.
+
+### Install from a source checkout
+
+Run these commands from the repository directory inside your virtual environment:
+
+```bash
+# Local analysis; installs the required dependencies.
+python -m pip install -e .
+
+# Optional AI support.
+python -m pip install -e '.[ai]'
+
+# Development and package-build tools.
+python -m pip install -e '.[dev]'
+
+# All extras.
+python -m pip install -e '.[ai,dev]'
+```
+
+### Download v0.3.0 packages
+
+- [Python wheel (.whl)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/download/v0.3.0/storage_log_ai_analyzer-0.3.0-py3-none-any.whl)
+- [Source distribution (.tar.gz)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/download/v0.3.0/storage_log_ai_analyzer-0.3.0.tar.gz)
+- [All release files and notes](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.3.0)
+
+After downloading the wheel, install it from its download directory:
+
+```bash
+python -m pip install ./storage_log_ai_analyzer-0.3.0-py3-none-any.whl
+storage-log-analyzer --version
+python -m pip check
+```
+
+For AI support with the downloaded wheel, use `python -m pip install './storage_log_ai_analyzer-0.3.0-py3-none-any.whl[ai]'`.
+
+Packages are distributed through GitHub Releases. They have not been published to PyPI or the GitHub Packages registry. See the [user guide](docs/USER_GUIDE.md) for platform-specific setup and the [changelog](CHANGELOG.md) for package updates.
 
 ## Quick start
 
