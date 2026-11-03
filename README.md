@@ -18,6 +18,8 @@
 
 An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC, and HPE storage systems. It normalizes different log formats, detects operational and security risks locally, and can optionally ask an AI model for a concise incident assessment.
 
+**How to use the tool:** [Read the user guide](docs/USER_GUIDE.md) · [Download the PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.2.0.pdf)
+
 ## Updates
 
 ### v0.2.0 — Dependency refresh and reliability fixes
@@ -25,6 +27,7 @@ An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC
 - **Updated packages:** OpenAI SDK 3.42.1+, Setuptools 84.2.1+, Ruff 0.17.3, and Build 1.6.1.
 - **More reliable input handling:** fixed forced-vendor detection, JSON/JSONL edge cases, empty input, and file-access errors.
 - **Safer optional AI behavior:** bounded requests, disabled response storage, and errors that do not echo provider payloads.
+- **New user guide:** [installation-to-report walkthrough](docs/USER_GUIDE.md), with a [downloadable PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.2.0.pdf).
 - **Version reporting:** run `storage-log-analyzer --version`.
 - **Verification:** regression tests, an SDK test with mocked transport, and CI for Python 3.10, 3.12, and 3.14 with and without AI extras.
 
@@ -144,6 +147,8 @@ Normalized event fields include timestamp, vendor, product, severity, component,
 
 | Resource | What it covers |
 |---|---|
+| [User guide](docs/USER_GUIDE.md) | Installation, commands, examples, privacy, automation, and troubleshooting |
+| [PDF user guide](docs/Storage_Log_AI_Analyzer_User_Guide_v0.2.0.pdf) | Downloadable usage document for v0.2.0 |
 | [Project website](https://sureshkumardarisi.com/#tools) | Tool overview and author profile |
 | [Operator procedure](docs/USAGE.md) | Installation, log collection, validation, redaction, AI setup, and automation |
 | [Contributing guide](CONTRIBUTING.md) | Vendor rules, sanitized fixtures, and contributions |
