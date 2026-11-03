@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it and record the commit or version used."
+type: software
+title: "Storage Log AI Analyzer"
+authors:
+  - family-names: "Darisi"
+    given-names: "Suresh Kumar"
+    orcid: "https://orcid.org/0009-0005-2642-3479"
+repository-code: "https://github.com/darisisuresh/storage-log-ai-analyzer"
+url: "https://sureshkumardarisi.com/#tools"
+license: MIT
+abstract: "Vendor-aware analysis of Pure Storage, Dell EMC, and HPE logs with local risk detection, incident reports, and optional AI assessment."
+keywords:
+  - storage
+  - log-analysis
+  - incident-response
+  - infrastructure

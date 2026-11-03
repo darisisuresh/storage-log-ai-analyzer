@@ -20,6 +20,12 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://sureshkumardarisi.com/#tools"
+Repository = "https://github.com/darisisuresh/storage-log-ai-analyzer"
+Documentation = "https://github.com/darisisuresh/storage-log-ai-analyzer/blob/main/docs/USAGE.md"
+Issues = "https://github.com/darisisuresh/storage-log-ai-analyzer/issues"
+
 [project.optional-dependencies]
 ai = ["openai>=1.40,<3"]
 dev = ["ruff>=0.6"]

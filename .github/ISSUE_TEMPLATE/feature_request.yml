@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest a vendor, format, rule, or workflow improvement.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What operational task is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include the vendor or format, desired result, and any alternatives considered. Use synthetic examples only.
+    validations:
+      required: true

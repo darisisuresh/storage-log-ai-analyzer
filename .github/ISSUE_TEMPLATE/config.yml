@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security policy
+    url: https://github.com/darisisuresh/storage-log-ai-analyzer/blob/main/SECURITY.md
+    about: Report vulnerabilities privately using the policy contact.
+  - name: Operator guide
+    url: https://github.com/darisisuresh/storage-log-ai-analyzer/blob/main/docs/USAGE.md
+    about: Installation, commands, redaction, and automation.
