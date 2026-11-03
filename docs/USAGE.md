@@ -16,6 +16,7 @@ python -m pip install -e .
 Confirm the CLI is available:
 
 ```bash
+storage-log-analyzer --version
 storage-log-analyzer --help
 storage-log-analyzer vendors
 storage-log-analyzer rules

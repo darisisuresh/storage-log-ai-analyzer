@@ -3,8 +3,8 @@ from __future__ import annotations
 import csv
 import json
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .models import Event
 from .vendors import detect_component, detect_product, detect_severity, detect_vendor
@@ -31,7 +31,11 @@ def _records(path: Path) -> Iterable[tuple[int, str, dict | None]]:
         return
     if path.suffix.lower() == ".json":
         data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        if not isinstance(data, (list, dict)):
+            raise ValueError(f"{path}: JSON must contain an object or an array")
         records = data if isinstance(data, list) else data.get("events", [data])
+        if not isinstance(records, list):
+            raise ValueError(f"{path}: 'events' must be an array")
         for number, row in enumerate(records, 1):
             yield number, json.dumps(row, ensure_ascii=False), row if isinstance(row, dict) else None
         return
@@ -46,7 +50,7 @@ def _records(path: Path) -> Iterable[tuple[int, str, dict | None]]:
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     pass
-            yield number, line, row
+            yield number, line, row if isinstance(row, dict) else None
 
 
 def parse_file(path: Path, vendor_override: str = "auto") -> list[Event]:
@@ -55,14 +59,14 @@ def parse_file(path: Path, vendor_override: str = "auto") -> list[Event]:
     file_vendor = detect_vendor(corpus) if vendor_override == "auto" else vendor_override
     events: list[Event] = []
     for number, text, row in records:
-        row = row or {}
+        row = row if isinstance(row, dict) else {}
         message = str(row.get("message") or row.get("msg") or row.get("description") or text)
         timestamp_match = TIMESTAMP.search(text)
         timestamp = str(row.get("timestamp") or row.get("time") or (timestamp_match.group("ts") if timestamp_match else "")) or None
         raw_severity = str(row.get("severity") or row.get("level") or "").lower()
         severity = raw_severity if raw_severity in {"critical", "high", "medium", "low"} else detect_severity(text)
         line_vendor = detect_vendor(text)
-        event_vendor = line_vendor if line_vendor != "unknown" else file_vendor
+        event_vendor = (line_vendor if line_vendor != "unknown" else file_vendor) if vendor_override == "auto" else vendor_override
         events.append(Event(timestamp, event_vendor, detect_product(text), severity, detect_component(text), message, str(path), number))
     return events
 

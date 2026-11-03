@@ -6,11 +6,12 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from . import __version__
 from .ai import assess
 from .ingest import ingest
 from .models import AnalysisReport
-from .report import render
 from .privacy import redact
+from .report import render
 from .rules import RULES, evaluate
 
 SEVERITY_RANK = {"unknown": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
@@ -33,6 +34,8 @@ def _should_fail(risk: str, threshold: str) -> bool:
 def analyze_command(args: argparse.Namespace) -> int:
     try:
         files, events = ingest(Path(args.path), args.vendor)
+        if not files or not events:
+            raise ValueError("No supported events found in the input")
         findings = evaluate(events)
         if args.min_severity:
             findings = [item for item in findings if SEVERITY_RANK[item.severity] >= SEVERITY_RANK[args.min_severity]]
@@ -48,7 +51,7 @@ def analyze_command(args: argparse.Namespace) -> int:
         result = render(report, args.format)
         _write_or_print(result, args.output)
         return 2 if _should_fail(report.risk, args.fail_on) else 0
-    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
@@ -76,7 +79,7 @@ def summary_command(args: argparse.Namespace) -> int:
             ))
         _write_or_print(result, args.output)
         return 0
-    except (FileNotFoundError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
@@ -96,7 +99,7 @@ def validate_command(args: argparse.Namespace) -> int:
         coverage = 100 * (len(events) - unknown_vendor) / len(events)
         print(f"Vendor recognition: {coverage:.1f}%")
         return 2 if args.strict and (unknown_vendor or unknown_severity) else 0
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"Validation failed: {exc}", file=sys.stderr)
         return 1
 
@@ -134,6 +137,7 @@ def rules_command(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="storage-log-analyzer", description="Analyze storage logs locally with optional AI assistance")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
     analyze = subparsers.add_parser("analyze", help="analyze a file or directory")
     analyze.add_argument("path")

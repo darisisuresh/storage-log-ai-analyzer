@@ -4,6 +4,7 @@
 
 # Storage Log AI Analyzer
 
+[![Version 0.2.0](https://img.shields.io/badge/Version-0.2.0-c8ff42)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.2.0)
 [![CI](https://github.com/darisisuresh/storage-log-ai-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/darisisuresh/storage-log-ai-analyzer/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -17,9 +18,23 @@
 
 An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC, and HPE storage systems. It normalizes different log formats, detects operational and security risks locally, and can optionally ask an AI model for a concise incident assessment.
 
+## Updates
+
+### v0.2.0 — Dependency refresh and reliability fixes
+
+- **Updated packages:** OpenAI SDK 3.42.1+, Setuptools 84.2.1+, Ruff 0.17.3, and Build 1.6.1.
+- **More reliable input handling:** fixed forced-vendor detection, JSON/JSONL edge cases, empty input, and file-access errors.
+- **Safer optional AI behavior:** bounded requests, disabled response storage, and errors that do not echo provider payloads.
+- **Version reporting:** run `storage-log-analyzer --version`.
+- **Verification:** regression tests, an SDK test with mocked transport, and CI for Python 3.10, 3.12, and 3.14 with and without AI extras.
+
+[Full changelog](CHANGELOG.md) · [Release notes](docs/releases/v0.2.0.md) · [GitHub release](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.2.0)
+
+To update an existing checkout, run `git pull` and `python -m pip install --upgrade -e .`; add `.[ai]` if you use optional AI assessment. See the release notes for SDK compatibility details.
+
 ## Navigate
 
-[Overview](#about) · [Features](#what-it-does) · [Quick start](#quick-start) · [Demo](#see-it-in-action) · [Vendors](#supported-inputs) · [Commands](#cli) · [Privacy](#security-and-privacy) · [Contributing](#contributing) · [Citation](#citation)
+[Updates](#updates) · [Overview](#about) · [Features](#what-it-does) · [Quick start](#quick-start) · [Demo](#see-it-in-action) · [Vendors](#supported-inputs) · [Commands](#cli) · [Privacy](#security-and-privacy) · [Contributing](#contributing) · [Citation](#citation)
 
 ## About
 

@@ -11,7 +11,7 @@ def assess(report: AnalysisReport, model: str | None = None) -> str:
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is required when --ai is enabled")
     try:
-        from openai import OpenAI
+        from openai import APIError, OpenAI
     except ImportError as exc:
         raise RuntimeError("AI support is not installed; run: pip install -e '.[ai]'") from exc
 
@@ -28,6 +28,19 @@ def assess(report: AnalysisReport, model: str | None = None) -> str:
         "Return: executive summary, prioritized observations, likely impact, immediate actions, "
         "and questions for the storage team. Clearly label uncertainty.\n\n" + safe_payload
     )
-    client = OpenAI()
-    response = client.responses.create(model=model or os.getenv("STORAGE_LOG_AI_MODEL", "gpt-5-mini"), input=prompt)
+    try:
+        with OpenAI(timeout=60.0, max_retries=2) as client:
+            response = client.responses.create(
+                model=model or os.getenv("STORAGE_LOG_AI_MODEL", "gpt-5-mini"),
+                input=prompt,
+                store=False,
+            )
+    except APIError as exc:
+        # Avoid echoing request bodies or provider error text containing log data.
+        raise RuntimeError(
+            f"AI assessment failed ({type(exc).__name__}); check connectivity, credentials, "
+            "model access, and API quota. Run without --ai for local analysis."
+        ) from None
+    if not response.output_text:
+        raise RuntimeError("AI assessment returned no text; run without --ai for local analysis")
     return response.output_text
