@@ -27,7 +27,7 @@ Documentation = "https://github.com/darisisuresh/storage-log-ai-analyzer/blob/ma
 Issues = "https://github.com/darisisuresh/storage-log-ai-analyzer/issues"
 
 [project.optional-dependencies]
-ai = ["openai>=1.40,<3"]
+ai = ["openai>=1.40,<4"]
 dev = ["ruff>=0.6"]
 
 [project.scripts]
