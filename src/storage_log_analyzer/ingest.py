@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import os
 import json
 import re
@@ -135,6 +136,18 @@ class _Lines:
         return line
 
 
+
+def _invalid_constant(value):
+    raise ValueError('Non-finite JSON number')
+
+
+def _jsonl_value(line):
+    reader = _JSONReader(io.BytesIO(line.encode('utf-8')))
+    while reader.read(65536):
+        pass
+    return json.loads(line, parse_constant=_invalid_constant)
+
+
 def _records(path: Path, strict_format=False, on_format_error=None) -> Iterable:
     try:
         if path.suffix.lower() == '.json':
@@ -157,11 +170,11 @@ def _records(path: Path, strict_format=False, on_format_error=None) -> Iterable:
                 row, format_error = None, None
                 if path.suffix.lower() == '.jsonl':
                     try:
-                        value = json.loads(line)
+                        value = _jsonl_value(line)
                         row = value if isinstance(value, dict) else None
                         if row is None:
                             format_error = 'non_object_jsonl'
-                    except (json.JSONDecodeError, RecursionError):
+                    except (ValueError, RecursionError):
                         format_error = 'malformed_jsonl'
                     if format_error and on_format_error:
                         on_format_error(path, number, format_error, line)

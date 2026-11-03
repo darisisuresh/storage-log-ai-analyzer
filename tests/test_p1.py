@@ -134,6 +134,21 @@ class P1Tests(unittest.TestCase):
     def test_date_only_timestamp_is_not_assumed_to_have_a_time(self):
         self.assertEqual(normalize('2026-11-02'), (None, 'missing_time'))
 
+    def test_strict_jsonl_rejects_nonfinite_numbers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / 'input.jsonl'
+            for value in ('NaN', 'Infinity', '-Infinity'):
+                p.write_text('{"message":"disk failed","value":' + value + '}\n')
+                with self.assertRaisesRegex(ValueError, ':1: malformed_jsonl'):
+                    list(iter_file(p, strict_format=True))
+
+    def test_strict_jsonl_enforces_nesting_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / 'input.jsonl'
+            p.write_text('{"message":' + '[' * 65 + '0' + ']' * 65 + '}\n')
+            with self.assertRaisesRegex(ValueError, ':1: malformed_jsonl'):
+                list(iter_file(p, strict_format=True))
+
     def test_strict_format_rejects_non_object_records(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / 'input.jsonl'
