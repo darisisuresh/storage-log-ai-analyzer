@@ -1,6 +1,16 @@
 # Storage Log AI Analyzer
 
+[Website](https://sureshkumardarisi.com/#tools) · [Operator guide](docs/USAGE.md) · [Report an issue](https://github.com/darisisuresh/storage-log-ai-analyzer/issues) · [Contributing](CONTRIBUTING.md)
+
+**Analyze storage logs locally. Use AI assessment when you choose.**
+
 An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC, and HPE storage systems. It normalizes different log formats, detects operational and security risks locally, and can optionally ask an AI model for a concise incident assessment.
+
+## About
+
+Created by [Suresh Kumar Darisi](https://sureshkumardarisi.com/), Storage Log AI Analyzer helps storage administrators and infrastructure engineers review exported logs, identify operational and security risks, and produce incident reports. It is a Python command-line tool with vendor-aware parsing and local detection rules.
+
+The [project website](https://sureshkumardarisi.com/#tools) introduces the tool and links to its source. Run the analyzer locally using the instructions below.
 
 ## What it does
 
@@ -26,6 +36,10 @@ source .venv/bin/activate
 pip install -e .
 storage-log-analyzer analyze samples/mixed-storage.log
 ```
+
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` instead of `source .venv/bin/activate`.
+
+The sample contains risk events. By default, analysis returns exit code `2` when high or critical risk is found; this indicates a detected risk rather than an installation failure. Add `--fail-on never` when you want a report without a risk-based exit code.
 
 Generate a Markdown incident report:
 
@@ -77,6 +91,15 @@ log files -> ingestion -> vendor detection -> normalization
 
 Normalized event fields include timestamp, vendor, product, severity, component, message, source file, and source line. Each finding includes severity, category, evidence, and recommended actions.
 
+## Documentation
+
+| Resource | What it covers |
+|---|---|
+| [Project website](https://sureshkumardarisi.com/#tools) | Tool overview and author profile |
+| [Operator procedure](docs/USAGE.md) | Installation, log collection, validation, redaction, AI setup, and automation |
+| [Contributing guide](CONTRIBUTING.md) | Vendor rules, sanitized fixtures, and contributions |
+| [Issue tracker](https://github.com/darisisuresh/storage-log-ai-analyzer/issues) | Bug reports and feature requests |
+
 ## Development
 
 ```bash
@@ -90,7 +113,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for adding vendor rules and sanitized fix
 
 - Treat storage logs as sensitive operational data.
 - Use offline analysis for regulated or isolated environments.
-- Review the redacted preview before enabling external AI in production.
+- Review a sanitized copy with the `redact` command before enabling external AI in production. Redaction cannot guarantee removal of customer-specific free-form names.
 - Never commit real credentials, customer names, IP addresses, serial numbers, or unredacted support bundles.
 - Pin and review dependencies before production deployment.
 
