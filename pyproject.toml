@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "storage-log-ai-analyzer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Vendor-aware storage log monitoring and optional AI-assisted incident analysis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Topic :: System :: Monitoring",
 ]
-dependencies = []
+dependencies = ["ijson>=3.6.0,<4"]
 
 [project.urls]
 Homepage = "https://sureshkumardarisi.com/#tools"

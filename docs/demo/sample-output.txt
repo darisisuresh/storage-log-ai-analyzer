@@ -2,18 +2,18 @@ Overall risk: CRITICAL
 Events: 5 | Files: 1
 Vendors: pure=2, emc=2, hpe=1
 
-[CRITICAL] STO-001 Drive or media failure (1 matches)
+[OPEN] [CRITICAL] STO-001 Drive or media failure (1 occurrences; 1 incidents)
   - Identify the affected drive and protection state.
   - Open a vendor support case if redundancy is reduced.
-[HIGH] SEC-001 Authentication failure (1 matches)
+[OPEN] [HIGH] SEC-001 Authentication failure (1 occurrences; 1 incidents)
   - Validate the source and targeted account.
   - Rotate exposed credentials and review administrative audit logs.
-[HIGH] STO-002 Storage path or port failure (1 matches)
+[OPEN] [HIGH] STO-002 Storage path or port failure (1 occurrences; 1 incidents)
   - Verify multipathing and fabric health.
   - Check switch, SFP, cable, and host HBA events.
-[HIGH] STO-003 Capacity is critically high (1 matches)
+[OPEN] [HIGH] STO-003 Capacity is critically high (1 occurrences; 1 incidents)
   - Stop nonessential growth and confirm thin-provisioning risk.
   - Reclaim or add capacity before writes are affected.
-[HIGH] STO-005 Replication or snapshot failure (1 matches)
+[OPEN] [HIGH] STO-005 Replication or snapshot failure (1 occurrences; 1 incidents)
   - Measure the recovery-point gap.
   - Restore replication and verify the latest usable recovery point.

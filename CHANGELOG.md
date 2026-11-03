@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.3.0 — P0 correctness, privacy, and memory fixes
+
+### P0-1: distinguish failures from negative/recovery messages
+
+- Added OPEN, ACKNOWLEDGED, RECOVERING and RESOLVED incident transitions, keyed by rule, device/source, and resource.
+- Historical occurrences are retained. Resolved incidents are excluded from current risk and the CLI failure threshold.
+- Recovery for another device or an unspecified resource cannot clear an identified disk incident. Known older UTC recovery events cannot overwrite a newer active failure.
+- Negative status phrases no longer create active incidents in the regression examples. The outage phrase `no active paths` remains active.
+- Mixed-device files no longer inherit a file-wide vendor guess; unidentified vendors remain unknown.
+
+### P0-2: restrict the AI boundary
+
+- Raw evidence, messages, paths, device names, arbitrary map keys and log-provided titles are excluded from AI requests by construction.
+- Requests contain only fixed rule metadata, allowlisted vendor/severity counts, state, and finding references. JSON is built structurally; it is not cut mid-record.
+- Added `analyze PATH --ai-preview -o request.json` to save the exact request body without a key or API call. `--ai` and `--ai-preview` are mutually exclusive.
+- Expanded local redaction of known credentials, IPv6, labeled identities, hosts and paths. This helper remains heuristic and requires manual review; its guarantees are separate from the AI schema boundary.
+
+### P0-3: stream input and bound working memory
+
+- Text, CSV, JSON Lines and JSON records stream into incremental counters and rule evaluation.
+- Added `ijson>=3.6.0,<4` as a required dependency for incremental JSON parsing; SQLite uses the Python standard library.
+- Per-device state is held in a temporary SQLite database with a 4 MiB cache, bounded output samples, and cleanup on completion or failure. Temporary disk usage grows with distinct incident identities.
+- Added explicit record/nesting/identity and file-count limits, and atomic streaming redaction output.
+- `parse_file` remains a small-input compatibility helper, capped at 10,000 events and an 8 MiB text budget. Integrations should use `iter_file` or the lazy `ingest` event iterator.
+
+### Verification and limits
+
+See [P0 review evidence](docs/P0_REVIEW.md) for reproduction commands, memory measurements and remaining limitations. Automated tests use synthetic data and mocked API transport; no customer logs or real API calls were used. This is an alpha prerelease, not a production certification.
+
+
 ## v0.2.0 — Dependency refresh and reliability fixes
 
 ### Updated packages

@@ -13,10 +13,10 @@ def render(report: AnalysisReport, output_format: str) -> str:
         if not report.findings:
             lines.append("No known high-risk patterns were detected.")
         for item in report.findings:
-            lines.extend([f"### [{item.severity.upper()}] {item.title}", "", f"Rule `{item.rule_id}` matched {item.count} event(s).", "", "Evidence:"])
+            lines.extend([f"### [{item.state}] [{item.severity.upper()}] {item.title}", "", f"Rule `{item.rule_id}` matched {item.count} event(s).", "", "Evidence:"])
             lines.extend(f"- {evidence}" for evidence in item.evidence)
             lines.extend(["", "Recommended actions:"])
-            lines.extend(f"- {action}" for action in item.recommendations)
+            lines.extend(f"- {action}" for action in (["Historical incident resolved; verify recovery evidence."] if item.state == "RESOLVED" else item.recommendations))
             lines.append("")
         if report.ai_assessment:
             lines.extend(["## AI assessment", "", report.ai_assessment, ""])
@@ -26,8 +26,8 @@ def render(report: AnalysisReport, output_format: str) -> str:
     if not report.findings:
         lines.append("No known high-risk patterns were detected.")
     for item in report.findings:
-        lines.append(f"[{item.severity.upper()}] {item.rule_id} {item.title} ({item.count} matches)")
-        for action in item.recommendations:
+        lines.append(f"[{item.state}] [{item.severity.upper()}] {item.rule_id} {item.title} ({item.count} occurrences; {item.incident_count} incidents)")
+        for action in (["Historical incident resolved; verify recovery evidence."] if item.state == "RESOLVED" else item.recommendations):
             lines.append(f"  - {action}")
     if report.ai_assessment:
         lines.extend(["", "AI assessment:", report.ai_assessment])

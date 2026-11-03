@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import os
+import tempfile
 import json
 import sys
 from collections import Counter
 from pathlib import Path
 
 from . import __version__
-from .ai import assess
+from .ai import assess, build_ai_request
 from .ingest import ingest
 from .models import AnalysisReport
 from .privacy import redact
@@ -34,22 +36,29 @@ def _should_fail(risk: str, threshold: str) -> bool:
 def analyze_command(args: argparse.Namespace) -> int:
     try:
         files, events = ingest(Path(args.path), args.vendor)
-        if not files or not events:
+        vendors, severities = Counter(), Counter()
+        event_count = 0
+
+        def counted():
+            nonlocal event_count
+            for event in events:
+                event_count += 1
+                vendors[event.vendor] += 1
+                severities[event.severity] += 1
+                yield event
+
+        findings = evaluate(counted())
+        if not files or not event_count:
             raise ValueError("No supported events found in the input")
-        findings = evaluate(events)
         if args.min_severity:
             findings = [item for item in findings if SEVERITY_RANK[item.severity] >= SEVERITY_RANK[args.min_severity]]
-        report = AnalysisReport(
-            files=[str(path) for path in files],
-            event_count=len(events),
-            vendors=dict(Counter(event.vendor for event in events)),
-            severities=dict(Counter(event.severity for event in events)),
-            findings=findings,
-        )
+        report = AnalysisReport([str(path) for path in files], event_count, dict(vendors), dict(severities), findings)
+        if args.ai_preview:
+            _write_or_print(json.dumps(build_ai_request(report, args.model), indent=2), args.output)
+            return 0
         if args.ai:
             report.ai_assessment = assess(report, args.model)
-        result = render(report, args.format)
-        _write_or_print(result, args.output)
+        _write_or_print(render(report, args.format), args.output)
         return 2 if _should_fail(report.risk, args.fail_on) else 0
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -59,24 +68,19 @@ def analyze_command(args: argparse.Namespace) -> int:
 def summary_command(args: argparse.Namespace) -> int:
     try:
         files, events = ingest(Path(args.path), args.vendor)
-        products = Counter(event.product or "unknown" for event in events)
-        components = Counter(event.component for event in events)
-        data = {
-            "files": len(files),
-            "events": len(events),
-            "vendors": dict(Counter(event.vendor for event in events)),
-            "products": dict(products),
-            "severities": dict(Counter(event.severity for event in events)),
-            "components": dict(components),
-        }
+        vendors, products, severities, components = Counter(), Counter(), Counter(), Counter()
+        event_count = 0
+        for event in events:
+            event_count += 1
+            vendors[event.vendor] += 1
+            products[event.product or "unknown"] += 1
+            severities[event.severity] += 1
+            components[event.component] += 1
+        data = {"files": len(files), "events": event_count, "vendors": dict(vendors), "products": dict(products), "severities": dict(severities), "components": dict(components)}
         if args.format == "json":
             result = json.dumps(data, indent=2)
         else:
-            result = "\n".join((
-                f"Files: {data['files']}", f"Events: {data['events']}",
-                f"Vendors: {dict(data['vendors'])}", f"Products: {dict(products)}",
-                f"Severities: {dict(data['severities'])}", f"Components: {dict(components)}",
-            ))
+            result = "\n".join((f"Files: {len(files)}", f"Events: {event_count}", f"Vendors: {dict(vendors)}", f"Products: {dict(products)}", f"Severities: {dict(severities)}", f"Components: {dict(components)}"))
         _write_or_print(result, args.output)
         return 0
     except (OSError, ValueError) as exc:
@@ -87,16 +91,19 @@ def summary_command(args: argparse.Namespace) -> int:
 def validate_command(args: argparse.Namespace) -> int:
     try:
         files, events = ingest(Path(args.path), args.vendor)
-        unknown_vendor = sum(event.vendor == "unknown" for event in events)
-        unknown_severity = sum(event.severity == "unknown" for event in events)
+        count = unknown_vendor = unknown_severity = 0
+        for event in events:
+            count += 1
+            unknown_vendor += event.vendor == "unknown"
+            unknown_severity += event.severity == "unknown"
         print(f"Files readable: {len(files)}")
-        print(f"Events parsed: {len(events)}")
+        print(f"Events parsed: {count}")
         print(f"Unknown vendor: {unknown_vendor}")
         print(f"Unknown severity: {unknown_severity}")
-        if not files or not events:
+        if not files or not count:
             print("Validation failed: no supported events found.", file=sys.stderr)
             return 1
-        coverage = 100 * (len(events) - unknown_vendor) / len(events)
+        coverage = 100 * (count - unknown_vendor) / count
         print(f"Vendor recognition: {coverage:.1f}%")
         return 2 if args.strict and (unknown_vendor or unknown_severity) else 0
     except (OSError, ValueError) as exc:
@@ -112,9 +119,21 @@ def redact_command(args: argparse.Namespace) -> int:
             raise ValueError("redact currently accepts one file at a time")
         if source.resolve() == destination.resolve():
             raise ValueError("refusing to overwrite the source log; choose a different --output")
-        content = source.read_text(encoding="utf-8", errors="replace")
+        from .ingest import MAX_RECORD
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(redact(content), encoding="utf-8")
+        temporary = None
+        try:
+            with source.open(encoding="utf-8", errors="replace") as incoming:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent, delete=False) as outgoing:
+                    temporary = Path(outgoing.name)
+                    while line := incoming.readline(MAX_RECORD + 1):
+                        if len(line) > MAX_RECORD:
+                            raise ValueError("Input record exceeds 1 MiB")
+                        outgoing.write(redact(line))
+            os.replace(temporary, destination)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         print(f"Redacted copy written to {destination}")
         return 0
     except (OSError, ValueError) as exc:
@@ -144,7 +163,9 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--vendor", choices=("auto", "pure", "emc", "hpe"), default="auto")
     analyze.add_argument("--format", choices=("text", "json", "markdown"), default="text")
     analyze.add_argument("--output", "-o", help="write the report to a file")
-    analyze.add_argument("--ai", action="store_true", help="send a redacted finding summary to an AI model")
+    ai_group = analyze.add_mutually_exclusive_group()
+    ai_group.add_argument("--ai", action="store_true", help="send aggregate finding counts to an AI model (no raw evidence)")
+    ai_group.add_argument("--ai-preview", action="store_true", help="write the exact AI request JSON without contacting a provider")
     analyze.add_argument("--model", help="OpenAI model name; defaults to STORAGE_LOG_AI_MODEL or gpt-5-mini")
     analyze.add_argument("--min-severity", choices=("low", "medium", "high", "critical"), help="only include findings at or above this severity")
     analyze.add_argument("--fail-on", choices=("never", "low", "medium", "high", "critical"), default="high", help="return exit code 2 at or above this risk (default: high)")

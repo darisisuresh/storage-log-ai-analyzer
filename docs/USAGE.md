@@ -115,7 +115,7 @@ export STORAGE_LOG_AI_MODEL='gpt-5-mini'
 storage-log-analyzer analyze /secure/storage-case-001 --ai --format markdown -o reports/ai-assessment.md
 ```
 
-Only a bounded, redacted summary of local findings is sent to the configured model. Review your organization's data-handling policy first. The original raw logs are not included in the AI request.
+Only allowlisted aggregate counts, fixed rule metadata, state, and finding references are sent to the configured model. Raw evidence and identities are excluded. Preview the exact request with `analyze PATH --ai-preview -o request.json`. Review your organization's data-handling policy first. The original raw logs are not included in the AI request.
 
 ## 8. Use in automation
 

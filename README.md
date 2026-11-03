@@ -4,7 +4,7 @@
 
 # Storage Log AI Analyzer
 
-[![Version 0.2.0](https://img.shields.io/badge/Version-0.2.0-c8ff42)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.2.0)
+[![Version 0.3.0](https://img.shields.io/badge/Version-0.3.0-c8ff42)](https://github.com/darisisuresh/storage-log-ai-analyzer/releases/tag/v0.3.0)
 [![CI](https://github.com/darisisuresh/storage-log-ai-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/darisisuresh/storage-log-ai-analyzer/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -18,16 +18,27 @@
 
 An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC, and HPE storage systems. It normalizes different log formats, detects operational and security risks locally, and can optionally ask an AI model for a concise incident assessment.
 
-**How to use the tool:** [Read the user guide](docs/USER_GUIDE.md) · [Download the PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.2.0.pdf)
+**How to use the tool:** [Read the user guide](docs/USER_GUIDE.md) · [Download the PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.3.0.pdf)
 
 ## Updates
+
+### v0.3.0 — P0 fixes from the independent review
+
+- **Correctness:** distinguish active incidents from negative/recovery messages and preserve per-device/resource state.
+- **Privacy:** AI receives allowlisted aggregate facts only, with no raw log evidence or identities. Preview the exact request with `--ai-preview`.
+- **Scale:** streaming input and temporary SQLite incident state replace whole-file/event-list processing. Includes a reproducible million-event benchmark.
+- **Verification:** regression tests for recovery, unrelated devices, sensitive data, and input limits. See [P0 evidence and limitations](docs/P0_REVIEW.md).
+- **Package change:** incremental JSON parsing now requires `ijson>=3.6.0,<4`; reinstall after pulling.
+
+[Full release notes](docs/releases/v0.3.0.md) · [Changelog](CHANGELOG.md) · [Current user guide](docs/USER_GUIDE.md)
+
 
 ### v0.2.0 — Dependency refresh and reliability fixes
 
 - **Updated packages:** OpenAI SDK 3.42.1+, Setuptools 84.2.1+, Ruff 0.17.3, and Build 1.6.1.
 - **More reliable input handling:** fixed forced-vendor detection, JSON/JSONL edge cases, empty input, and file-access errors.
 - **Safer optional AI behavior:** bounded requests, disabled response storage, and errors that do not echo provider payloads.
-- **New user guide:** [installation-to-report walkthrough](docs/USER_GUIDE.md), with a [downloadable PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.2.0.pdf).
+- **New user guide:** [installation-to-report walkthrough](docs/USER_GUIDE.md), with a [downloadable PDF](docs/Storage_Log_AI_Analyzer_User_Guide_v0.3.0.pdf).
 - **Version reporting:** run `storage-log-analyzer --version`.
 - **Verification:** regression tests, an SDK test with mocked transport, and CI for Python 3.10, 3.12, and 3.14 with and without AI extras.
 
@@ -53,7 +64,7 @@ The [project website](https://sureshkumardarisi.com/#tools) introduces the tool 
 - Detects failed disks, path failures, capacity pressure, controller issues, replication failures, authentication attacks, and ransomware-like activity
 - Redacts IP addresses, email addresses, serial numbers, and long identifiers before optional AI analysis
 - Produces terminal, JSON, or Markdown reports
-- Runs offline unless `--ai` is explicitly enabled
+- Runs offline unless `--ai` is explicitly enabled; raw evidence is excluded from AI requests
 
 > This project is an operational aid, not a replacement for vendor support or an enterprise SIEM. Validate critical findings against the original logs.
 
@@ -88,7 +99,7 @@ export OPENAI_API_KEY='your-key'
 storage-log-analyzer analyze samples/mixed-storage.log --ai
 ```
 
-No log data is sent externally unless `--ai` is used. The AI receives a redacted, bounded summary rather than the entire raw file.
+Ordinary analysis runs offline. `--ai` sends allowlisted aggregate rule facts only; raw evidence, filenames, device identifiers, and arbitrary log fields are excluded. Use `--ai-preview` to inspect the exact request without contacting a provider.
 
 ## See it in action
 
@@ -134,12 +145,12 @@ flowchart LR
     A[Exported logs] --> B[Parse and normalize]
     B --> C[Vendor-aware local rules]
     C --> D[Local incident report]
-    C --> E[Redacted finding summary]
+    C --> E[Allowlisted aggregate facts]
     E -->|Only with --ai| F[Optional AI assessment]
     F --> D
 ```
 
-Local reports may contain original event evidence and file paths. Review and sanitize reports before sharing. Redaction is applied before the optional AI request; it does not automatically sanitize every local output.
+Local reports may contain original event evidence and file paths. Review and sanitize reports before sharing. The optional AI request excludes raw evidence entirely; local outputs are not automatically sanitized.
 
 Normalized event fields include timestamp, vendor, product, severity, component, message, source file, and source line. Each finding includes severity, category, evidence, and recommended actions.
 
@@ -148,7 +159,7 @@ Normalized event fields include timestamp, vendor, product, severity, component,
 | Resource | What it covers |
 |---|---|
 | [User guide](docs/USER_GUIDE.md) | Installation, commands, examples, privacy, automation, and troubleshooting |
-| [PDF user guide](docs/Storage_Log_AI_Analyzer_User_Guide_v0.2.0.pdf) | Downloadable usage document for v0.2.0 |
+| [PDF user guide](docs/Storage_Log_AI_Analyzer_User_Guide_v0.3.0.pdf) | Downloadable usage document for v0.3.0 |
 | [Project website](https://sureshkumardarisi.com/#tools) | Tool overview and author profile |
 | [Operator procedure](docs/USAGE.md) | Installation, log collection, validation, redaction, AI setup, and automation |
 | [Contributing guide](CONTRIBUTING.md) | Vendor rules, sanitized fixtures, and contributions |
@@ -170,6 +181,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for adding vendor rules and sanitized fix
 - Review a sanitized copy with the `redact` command before enabling external AI in production. Redaction cannot guarantee removal of customer-specific free-form names.
 - Never commit real credentials, customer names, IP addresses, serial numbers, or unredacted support bundles.
 - Pin and review dependencies before production deployment.
+
+## Limits and incident state
+
+Reports retain resolved history but exclude it from current risk. Correlation uses explicit device/resource identity when available and source-file scope otherwise. Supply chronological logs: global cross-file temporal sorting and vendor-specific recovery semantics remain future work. Evidence/device samples are limited to five per rule/state group; counts remain exact. See [limits and benchmark evidence](docs/P0_REVIEW.md).
 
 ## Limitations
 
