@@ -51,6 +51,8 @@ def _scan_options(args):
 
 def _diagnose(event, diagnostics):
     diagnostics['timestamp_' + event.timestamp_status] += 1
+    if event.timestamp_assumed_year is not None:
+        diagnostics['timestamp_assumed_year'] += 1
     diagnostics['vendor_' + event.vendor_source] += 1
     if not event.device:
         diagnostics['source_scoped_identity'] += 1
@@ -75,7 +77,7 @@ def analyze_command(args: argparse.Namespace) -> int:
             severities[event.severity] += 1
             _diagnose(event, diagnostics)
 
-        findings = evaluate(events, on_event=observed, diagnostics=diagnostics, rpo_target_seconds=args.rpo_target_seconds)
+        findings = evaluate(events, on_event=observed, diagnostics=diagnostics, rpo_target_seconds=args.rpo_target_seconds, correlation_window_seconds=getattr(args, 'correlation_window_seconds', 300))
         if not files or not event_count:
             raise ValueError('No supported events found in the input')
         if args.min_severity:
@@ -149,7 +151,10 @@ def validate_command(args: argparse.Namespace) -> int:
         coverage = 100 * (count - unknown_vendor) / count
         print(f"Vendor recognition: {coverage:.1f}%")
         print(f"Diagnostics: {dict(diagnostics)}")
-        return 2 if args.strict and (unknown_vendor or unknown_severity or any(diagnostics.get('timestamp_' + status) for status in ('invalid', 'missing_year', 'missing_time', 'missing_timezone', 'ambiguous_local_time'))) else 0
+        invalid_clock = any(diagnostics.get(prefix + status)
+                            for prefix in ('timestamp_', 'replication_timestamp_')
+                            for status in ('missing', 'invalid', 'missing_year', 'missing_time', 'missing_timezone', 'ambiguous_local_time', 'invalid_timezone', 'timezone_conflict'))
+        return 2 if args.strict and (unknown_vendor or unknown_severity or invalid_clock) else 0
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Validation failed: {exc}", file=sys.stderr)
         return 1
@@ -234,6 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--min-severity", choices=("low", "medium", "high", "critical"), help="only include findings at or above this severity")
     analyze.add_argument("--fail-on", choices=("never", "low", "medium", "high", "critical"), default="high", help="return exit code 2 at or above this risk (default: high)")
     analyze.add_argument("--rpo-target-seconds", type=_seconds, help="escalate replication lag above this explicit target; no target is assumed")
+    analyze.add_argument("--correlation-window-seconds", type=_seconds, default=300, help="maximum difference between known controller/path failure starts on the same device (default: 300; maximum: 86400)")
     analyze.set_defaults(func=analyze_command)
 
     summary = subparsers.add_parser("summary", help="show vendor, product, severity, and component counts")

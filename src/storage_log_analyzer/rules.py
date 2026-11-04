@@ -7,11 +7,12 @@ import sqlite3
 import tempfile
 from contextlib import closing
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
 
 from .models import Event, Finding
-from .timestamps import normalize
+from .timestamps import details, normalize
+from .impact import score as impact_score
 from .ingest import _identity
 
 
@@ -78,10 +79,9 @@ def _time(value):
     if not value:
         return None
     try:
-        stamp = datetime.fromisoformat(value.replace('Z', '+00:00'))
-        # Naive timestamps are not silently interpreted as a local timezone.
-        return stamp.astimezone(timezone.utc).isoformat() if stamp.tzinfo else None
-    except ValueError:
+        stamp, _ = normalize(value, assume_timezone=None)
+        return stamp
+    except (ValueError, TypeError):
         return None
 
 
@@ -91,10 +91,27 @@ def _ordered_events(db, events, diagnostics):
     db.execute('CREATE TABLE device_vendors (device TEXT PRIMARY KEY, vendor TEXT)')
     db.execute('CREATE TABLE clock_progress (device TEXT PRIMARY KEY, stamp TEXT)')
     for seq, event in enumerate(events):
-        if event.timestamp and event.timestamp_original is None:
-            event.timestamp_original = event.timestamp
-            event.timestamp, event.timestamp_status = normalize(event.timestamp)
-        identity = event.device or ('source:' + event.source)
+        if event.timestamp:
+            clock = details(event.timestamp)
+            if event.timestamp_original is None:
+                event.timestamp_original = event.timestamp
+                event.timezone_original = clock.original_timezone
+                event.timezone_assumed = clock.assumed_timezone
+                event.timestamp_assumed_year = clock.assumed_year
+                event.timestamp_status = clock.status
+            elif event.timestamp != clock.utc or event.timestamp_status == 'missing':
+                event.timestamp_status = clock.status
+                if event.timezone_original is None and event.timezone_assumed is None:
+                    event.timezone_original = clock.original_timezone
+                    event.timezone_assumed = clock.assumed_timezone
+            event.timestamp = clock.utc
+        identity = event.device.casefold() if event.device else ('source:' + event.source)
+        success = _time(event.context.get('last_successful_replication'))
+        if 'last_successful_replication' in event.context:
+            event.context['last_successful_replication'] = success
+        if event.timestamp and success and success > event.timestamp:
+            event.context['replication_clock_conflict'] = True
+            diagnostics['replication_success_after_event'] = diagnostics.get('replication_success_after_event', 0) + 1
         if event.timestamp:
             old = db.execute('SELECT stamp FROM clock_progress WHERE device=?', (identity,)).fetchone()
             if old and event.timestamp < old[0]:
@@ -118,12 +135,16 @@ def _ordered_events(db, events, diagnostics):
         yield event
 
 
-def _policy(rule, context, gap, target):
+def _policy(rule, context, gap, target, state=None):
     if rule.rule_id.startswith('STO-') and context.get('service_impact') is True:
         return 'critical', 'confirmed_service_impact'
     if rule.rule_id.startswith('STO-') and context.get('redundancy') == 'lost':
         return 'critical', 'confirmed_redundancy_loss'
-    if rule.rule_id == 'STO-001' and context.get('redundancy') == 'healthy' and context.get('service_impact') is False:
+    if rule.rule_id == 'STO-005' and context.get('dr_target') is True and state in {'OPEN', 'ACKNOWLEDGED', 'RECOVERING'}:
+        return 'critical', 'disaster_recovery_target_outage'
+    if rule.rule_id == 'STO-001' and state != 'UNKNOWN' and context.get('redundancy') == 'healthy' and context.get('service_impact') is False:
+        if state == 'RECOVERING':
+            return 'medium', 'protected_drive_recovering'
         return 'high', 'confirmed_healthy_redundancy'
     if rule.rule_id == 'STO-005' and target is not None and gap is not None and gap > target:
         return 'critical', 'rpo_target_exceeded'
@@ -133,9 +154,12 @@ def _policy(rule, context, gap, target):
 def _gap(event, context, state):
     if state == 'RESOLVED':
         return 0.0
-    measured = context.get('replication_lag_seconds')
+    # A past measurement is not a fresh measurement at a later event.
+    measured = event.context.get('replication_lag_seconds')
     if measured is not None:
         return float(measured)
+    if context.get('replication_clock_conflict'):
+        return None
     stamp, success = _time(event.timestamp), _time(context.get('last_successful_replication'))
     if stamp and success:
         value = (datetime.fromisoformat(stamp) - datetime.fromisoformat(success)).total_seconds()
@@ -143,14 +167,14 @@ def _gap(event, context, state):
     return None
 
 
-def _evaluate(events, diagnostics, on_event, rpo_target_seconds):
+def _evaluate(events, diagnostics, on_event, rpo_target_seconds, correlation_window_seconds):
     groups = {}
     rules = {rule.rule_id: rule for rule in RULES}
     with tempfile.TemporaryDirectory(prefix='storage-incidents-') as folder:
         with closing(sqlite3.connect(str(Path(folder) / 'incidents.db'))) as db, db:
             db.execute('PRAGMA cache_size=-4096')
             db.execute('PRAGMA temp_store=FILE')
-            db.execute('CREATE TABLE incidents (rule TEXT, device TEXT, resource TEXT, state TEXT, count INTEGER, unique_count INTEGER, duplicates INTEGER, evidence TEXT, stamp TEXT, first_seen TEXT, last_seen TEXT, context TEXT, severity TEXT, basis TEXT, group_id TEXT, gap REAL, max_gap REAL, duration REAL, PRIMARY KEY(rule,device,resource))')
+            db.execute('CREATE TABLE incidents (rule TEXT, device TEXT, resource TEXT, state TEXT, count INTEGER, unique_count INTEGER, duplicates INTEGER, evidence TEXT, stamp TEXT, first_seen TEXT, last_seen TEXT, context TEXT, severity TEXT, basis TEXT, group_id TEXT, gap REAL, max_gap REAL, duration REAL, cycle_start TEXT, known_device INTEGER, PRIMARY KEY(rule,device,resource))')
             db.execute('CREATE TABLE seen (fingerprint TEXT PRIMARY KEY)')
             for event in _ordered_events(db, events, diagnostics):
                 if on_event:
@@ -182,12 +206,15 @@ def _evaluate(events, diagnostics, on_event, rpo_target_seconds):
                         if old and old[5] and not stamp and state == 'RESOLVED':
                             final_state = 'UNKNOWN'
                             diagnostics['unsequenced_recovery_events'] = diagnostics.get('unsequenced_recovery_events', 0) + 1
+                        if old and stamp and old[5] == stamp and not duplicate and {old[0], state} == {'OPEN', 'RESOLVED'}:
+                            final_state = 'UNKNOWN'
+                            diagnostics['equal_timestamp_state_conflicts'] = diagnostics.get('equal_timestamp_state_conflicts', 0) + 1
                         active_occurrence = state != 'RESOLVED'
                         count = (old[1] if old else 0) + active_occurrence
                         unique_count = (old[2] if old else 0) + (active_occurrence and not duplicate)
                         duplicates = (old[3] if old else 0) + (active_occurrence and duplicate)
                         evidence = json.loads(old[4]) if old else []
-                        sample = f'{event.source}:{event.line}: [{device} {resource}] UTC={event.timestamp or "unknown"} original={event.timestamp_original or "unknown"} status={event.timestamp_status}: {clause[:240]}'[:1200]
+                        sample = f'{event.source}:{event.line}: [{device} {resource}] UTC={event.timestamp or "unknown"} original={event.timestamp_original or "unknown"} zone={event.timezone_original or "unknown"} assumed_zone={event.timezone_assumed or "none"} assumed_year={event.timestamp_assumed_year or "none"} status={event.timestamp_status}: {clause[:240]}'[:1200]
                         if not duplicate and len(evidence) < 5:
                             evidence.append(sample)
                         elif old and final_state != old[0]:
@@ -195,6 +222,9 @@ def _evaluate(events, diagnostics, on_event, rpo_target_seconds):
                         first = old[6] if old else stamp
                         last = old[7] if duplicate and old else stamp
                         context = json.loads(old[8]) if old and not (old[0] == 'RESOLVED' and state == 'OPEN') else {}
+                        # A fresh successful-replication timestamp replaces prior clock uncertainty.
+                        if 'last_successful_replication' in event.context:
+                            context.pop('replication_clock_conflict', None)
                         context.update(event.context)
                         if not old or (old[0] == 'RESOLVED' and state == 'OPEN'):
                             context['_cycle_start'] = stamp
@@ -202,15 +232,41 @@ def _evaluate(events, diagnostics, on_event, rpo_target_seconds):
                         max_gap = max([v for v in ((old[12] if old else None), gap) if v is not None], default=None)
                         cycle_start = context.get('_cycle_start')
                         duration = (datetime.fromisoformat(last) - datetime.fromisoformat(cycle_start)).total_seconds() if cycle_start and last else None
-                        severity, basis = _policy(rule, context, gap, rpo_target_seconds)
+                        severity, basis = _policy(rule, context, gap, rpo_target_seconds, final_state)
+                        if old and final_state == 'UNKNOWN' and old[9] == 'critical':
+                            severity, basis = old[9], old[10]
+                        if old and old[10] == 'rpo_target_exceeded' and gap is None and final_state != 'RESOLVED':
+                            severity, basis = old[9], old[10]
                         if final_state == 'RESOLVED' and old:
                             severity, basis = old[9], old[10]
-                        db.execute('INSERT OR REPLACE INTO incidents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (*key, final_state, count, unique_count, duplicates, json.dumps(evidence), stamp if not duplicate else old[5], first, last, json.dumps(context), severity, basis, context.get('protection_group'), gap, max_gap, duration))
+                        # Retain the last known chronology anchor across any number of
+                        # unsequenced records, not merely the first untimed recovery.
+                        anchor = stamp if stamp and not duplicate else (old[5] if old else None)
+                        db.execute('INSERT OR REPLACE INTO incidents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (*key, final_state, count, unique_count, duplicates, json.dumps(evidence), anchor, first, last, json.dumps(context), severity, basis, context.get('protection_group'), gap, max_gap, duration, cycle_start, bool(clause_device or event.device)))
             # Only explicit protection-group membership permits multi-drive escalation.
-            for device, group_id in db.execute("SELECT device,group_id FROM incidents WHERE rule='STO-001' AND state!='RESOLVED' AND group_id IS NOT NULL GROUP BY device,group_id HAVING count(*)>1"):
-                db.execute("UPDATE incidents SET severity='critical',basis='multiple_drives_same_group' WHERE rule='STO-001' AND device=? AND group_id=? AND state!='RESOLVED'", (device, group_id))
-            for row in db.execute('SELECT rule,device,resource,state,count,unique_count,duplicates,evidence,first_seen,last_seen,severity,basis,gap,max_gap,duration FROM incidents ORDER BY rule,device,resource'):
-                rid, device, resource, state, count, unique_count, duplicates, raw, first, last, severity, basis, gap, max_gap, duration = row
+            for device, group_id in db.execute("SELECT device,group_id FROM incidents WHERE rule='STO-001' AND state IN ('OPEN','ACKNOWLEDGED','RECOVERING') AND known_device=1 AND group_id IS NOT NULL GROUP BY device,group_id HAVING count(*)>1"):
+                db.execute("UPDATE incidents SET severity='critical',basis='multiple_drives_same_group' WHERE rule='STO-001' AND device=? AND group_id=? AND known_device=1 AND state IN ('OPEN','ACKNOWLEDGED','RECOVERING')", (device, group_id))
+            # Correlate explicit device identities and known current-cycle starts only.
+            db.execute('CREATE INDEX active_device_rules ON incidents(device COLLATE NOCASE,rule,cycle_start)')
+            for device, resource, start in db.execute("SELECT device,resource,cycle_start FROM incidents WHERE rule='STO-004' AND state IN ('OPEN','ACKNOWLEDGED','RECOVERING') AND known_device=1 AND cycle_start IS NOT NULL"):
+                center = datetime.fromisoformat(start)
+                try:
+                    lower = (center - timedelta(seconds=correlation_window_seconds)).isoformat(timespec='microseconds')
+                except OverflowError:
+                    lower = datetime.min.replace(tzinfo=center.tzinfo).isoformat(timespec='microseconds')
+                try:
+                    upper = (center + timedelta(seconds=correlation_window_seconds)).isoformat(timespec='microseconds')
+                except OverflowError:
+                    upper = datetime.max.replace(tzinfo=center.tzinfo).isoformat(timespec='microseconds')
+                paths = db.execute("SELECT resource FROM incidents WHERE rule='STO-002' AND device=? COLLATE NOCASE AND known_device=1 AND state IN ('OPEN','ACKNOWLEDGED','RECOVERING') AND cycle_start BETWEEN ? AND ?", (device, lower, upper))
+                correlated = False
+                for path, in paths:
+                    correlated = True
+                    db.execute("UPDATE incidents SET severity='critical',basis='controller_path_correlation' WHERE rule='STO-002' AND device=? COLLATE NOCASE AND resource=? AND severity!='critical'", (device, path))
+                if correlated:
+                    db.execute("UPDATE incidents SET severity='critical',basis='controller_path_correlation' WHERE rule='STO-004' AND device=? AND resource=? AND severity!='critical'", (device, resource))
+            for row in db.execute('SELECT rule,device,resource,state,count,unique_count,duplicates,evidence,first_seen,last_seen,severity,basis,gap,max_gap,duration,context FROM incidents ORDER BY rule,device,resource'):
+                rid, device, resource, state, count, unique_count, duplicates, raw, first, last, severity, basis, gap, max_gap, duration, context_json = row
                 rule = rules[rid]
                 key = rid, state, severity, basis
                 if key not in groups:
@@ -220,6 +276,12 @@ def _evaluate(events, diagnostics, on_event, rpo_target_seconds):
                 finding.unique_event_count += unique_count
                 finding.duplicate_count += duplicates
                 finding.incident_count += 1
+                supplied = json.loads(context_json).get('risk_components')
+                if supplied is not None:
+                    value = impact_score(supplied)
+                    if finding.business_risk_score is None or value > finding.business_risk_score:
+                        finding.business_risk_score = value
+                        finding.risk_components = supplied
                 if len(finding.devices) < 5:
                     finding.devices.append(device + ('/' + resource if resource else ''))
                 for sample in json.loads(raw):
@@ -240,8 +302,10 @@ def _evaluate(events, diagnostics, on_event, rpo_target_seconds):
     return findings
 
 
-def evaluate(events, *, diagnostics=None, on_event=None, rpo_target_seconds=None):
+def evaluate(events, *, diagnostics=None, on_event=None, rpo_target_seconds=None, correlation_window_seconds=300):
     try:
-        return _evaluate(events, diagnostics if diagnostics is not None else {}, on_event, rpo_target_seconds)
+        if type(correlation_window_seconds) not in (int, float) or not 0 < correlation_window_seconds <= 86400:
+            raise ValueError('Correlation window must be greater than zero and at most 86400 seconds')
+        return _evaluate(events, diagnostics if diagnostics is not None else {}, on_event, rpo_target_seconds, correlation_window_seconds)
     except sqlite3.Error as exc:
         raise RuntimeError(f'Incident state storage failed ({type(exc).__name__}); check temporary disk space') from None

@@ -1,6 +1,6 @@
 # Storage Log AI Analyzer — User Guide
 
-Version 0.4.0 · Suresh Kumar Darisi
+Released guide: v0.4.0 · Current-source additions: Section 18 · Suresh Kumar Darisi
 
 [Project website](https://sureshkumardarisi.com/#tools) · [GitHub](https://github.com/darisisuresh/storage-log-ai-analyzer) · [Download PDF](Storage_Log_AI_Analyzer_User_Guide_v0.4.0.pdf)
 
@@ -81,7 +81,7 @@ storage-log-analyzer validate "/path/to/storage-logs" --strict
 storage-log-analyzer summary "/path/to/storage-logs" --format json -o reports/summary.json
 ```
 
-Strict validation rejects malformed/non-object JSONL with exit code 1 and a file/line error. It returns exit code 2 for unknown vendors/severities or present-but-unusable timestamps. It is a recognition check, not a guarantee that every vendor field is understood. Empty or unreadable input returns exit code 1.
+Strict validation rejects malformed/non-object JSONL with exit code 1 and a file/line error. It returns exit code 2 for unknown vendors/severities, missing event clocks, or unusable event/replication timestamps. It is a recognition check, not a guarantee that every vendor field is understood. Empty or unreadable input returns exit code 1.
 
 To force a known vendor, use `--vendor pure`, `--vendor emc`, or `--vendor hpe`. Version 0.4.0 gives this explicit choice precedence over text detection.
 
@@ -156,7 +156,7 @@ Events stream through bounded counters. A temporary SQLite database stores per-d
 
 Reports aggregate by rule/state with up to five evidence and device samples per group. Counts remain exact. The scan accepts at most 10,000 input files; records have a 1 MiB/1,048,576-character budget, JSON nesting is limited to 64, and identity fields to 256 characters. Oversized records fail explicitly. The `parse_file` Python helper is limited to 10,000 events/8 MiB text; use `iter_file` for larger inputs.
 
-Usable timestamps are normalized to UTC and ordered across files in temporary SQLite storage. Original text and normalization status are retained in events and bounded local evidence. Naive timestamps use `--assume-timezone UTC` by default and record that assumption; choose a different IANA zone explicitly when appropriate. RFC3164 syslog without a year requires `--assume-year`. Ambiguous/nonexistent DST wall-clock times and invalid/date-only clocks are diagnosed rather than guessed. Untimed events retain input order after timed events; untimed recovery cannot resolve a timed active failure. When identity is absent, correlation is source-file scoped.
+Usable timestamps are normalized to UTC and ordered across files in temporary SQLite storage. Original text and normalization status are retained in events and bounded local evidence. Naive timestamps use `--assume-timezone UTC` by default and record that assumption; choose a different IANA zone explicitly when appropriate. RFC3164 syslog without a year requires `--assume-year`. Ambiguous/nonexistent DST wall-clock times and invalid/date-only clocks are diagnosed rather than guessed. Untimed events retain input order after timed events; untimed recovery cannot resolve a timed active failure. When identity is absent, incident grouping is source-file scoped; cross-fault business-impact escalation requires an explicit device.
 
 Temporary storage is not encrypted and can grow with input size and unique identities. Cleanup occurs on normal completion and handled exceptions; abrupt process termination may leave private scratch directories. See [P1 evidence and limits](P1_REVIEW.md).
 
@@ -233,3 +233,44 @@ storage-log-analyzer analyze /path/to/logs --rpo-target-seconds 300 --format jso
 ```
 
 An RPO target is never assumed. Lag uses an explicit `replication_lag_seconds` value or the difference between a usable event clock and `last_successful_replication`. Successful resync resets current lag, preserves the maximum observed lag, and records current-cycle duration when clocks support it. Unknown lag stays null. These observations do not establish actual data loss or continuous maximum lag between observations.
+
+
+## 18. P1-6/P1-7 source update
+
+These additions apply to the current source checkout, not the existing v0.4.0 PDF or release packages. Keep the released files if reproducing that tag.
+
+### Original clocks and uncertainty
+
+Events expose `timestamp` (UTC), `timestamp_original`, `timestamp_status`, `timezone_original`, `timezone_assumed`, and `timestamp_assumed_year`. A structured `timezone` can supply an IANA name or numeric offset for a naive clock; conflicting metadata and invalid zones remain unusable rather than guessed. Absolute Unix epochs are UTC instants, regardless of a valid display-zone hint. Offset-bearing text such as `2026-11-02 10:00:00 +05:30` retains the full offset. Date-only values never imply midnight. Missing structured event clocks are not borrowed from replication metadata.
+
+`--assume-timezone` is a fallback policy, recorded separately from original metadata. `--assume-year` is also recorded for yearless syslog. Ambiguous/nonexistent DST times retain the combined `ambiguous_local_time` status.
+
+Analysis diagnoses out-of-input-order events per device, a last-successful replication clock later than its event, and conflicting failure/recovery transitions at an equal timestamp. These describe input/clock uncertainty, not proof of device malfunction. A repeated untimed recovery cannot silently clear a known timed failure. A historical lag measurement is not reused as fresh lag; maximum observed lag remains available.
+
+Strict validation checks clock usability; analysis performs the cross-event chronology/correlation checks.
+
+### Impact-aware severity
+
+- Explicit healthy redundancy **and** `service_impact: false` allow a single drive failure to be high. Its `RECOVERING` state can be medium while that context remains known. Missing context does not lower the conservative default.
+- Multiple active drives correlate only inside the same supplied protection group and explicit device.
+- Active controller and path failures on the same explicit device become critical only when their known current-cycle start times differ by at most the correlation window. Unknown/cleared incidents do not supply the required active evidence.
+- `dr_target: true` makes an active data-protection outage critical because the declared disaster-recovery target is affected. It does not assert host I/O loss or actual data loss.
+- Unknown recovery sequencing does not lower an already critical incident. Context is a supplied claim, not authenticated topology or a vendor-certified health assessment.
+
+```bash
+storage-log-analyzer analyze /path/to/logs --correlation-window-seconds 120 --format json
+```
+
+The default is 300 seconds; allowed windows are greater than zero and at most 86,400 seconds.
+
+### Optional advisory index
+
+JSON/JSONL may include a complete `risk_components` object. Every value must be a finite number from 0 to 100. The review’s starting formula is `0.30 impact + 0.25 urgency + 0.20 correlation + 0.15 duration + 0.10 exposure`. These are externally supplied normalized inputs; the analyzer does not manufacture them from unknown business facts or elapsed seconds.
+
+```json
+{"timestamp":"2026-11-02T10:00:00Z","host":"array-a","vendor":"pure","message":"replication failed","dr_target":true,"risk_components":{"impact":80,"urgency":60,"correlation":40,"duration":20,"exposure":100}}
+```
+
+This example has advisory index 60/100 and remains critical because of the declared DR outage. Partial/invalid components are rejected. Missing components leave the index null. A finding group reports the maximum supplied index and its associated components, not an average or a probability. JSON labels calibration `not_calibrated`; text/Markdown states that limitation explicitly. Calibrate the proposed weights against labeled incidents and storage-engineer review before relying on the index.
+
+Raw clock metadata, identities, components and index values stay local and are excluded from the existing allowlisted AI request. The AI can receive only the fixed severity-basis codes. See [test evidence and limitations](P1_6_7_REVIEW.md).

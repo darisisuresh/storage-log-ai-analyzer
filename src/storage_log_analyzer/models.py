@@ -22,6 +22,10 @@ class Event:
     vendor_source: str = "unknown"
     context: dict[str, Any] = field(default_factory=dict)
 
+    timezone_original: str | None = None
+    timezone_assumed: str | None = None
+    timestamp_assumed_year: int | None = None
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -47,6 +51,9 @@ class Finding:
     max_replication_gap_seconds: float | None = None
     duration_seconds: float | None = None
     finding_ref: str = ""
+    business_risk_score: float | None = None
+    risk_components: dict[str, float] = field(default_factory=dict)
+    risk_score_calibration: str = "not_calibrated"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

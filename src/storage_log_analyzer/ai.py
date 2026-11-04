@@ -8,7 +8,7 @@ from .rules import RULES
 
 STATES = {'OPEN', 'ACKNOWLEDGED', 'RECOVERING', 'RESOLVED', 'UNKNOWN'}
 SEVERITIES = {'critical', 'high', 'medium', 'low', 'unknown'}
-BASES = {'rule_default', 'confirmed_service_impact', 'confirmed_redundancy_loss', 'confirmed_healthy_redundancy', 'rpo_target_exceeded', 'multiple_drives_same_group'}
+BASES = {'rule_default', 'confirmed_service_impact', 'confirmed_redundancy_loss', 'confirmed_healthy_redundancy', 'rpo_target_exceeded', 'multiple_drives_same_group', 'protected_drive_recovering', 'controller_path_correlation', 'disaster_recovery_target_outage'}
 OBSERVATIONS = {'active_rule_match', 'resolved_rule_history', 'insufficient_context'}
 UNCERTAINTIES = {'aggregate_only', 'identity_omitted', 'root_cause_unverified'}
 

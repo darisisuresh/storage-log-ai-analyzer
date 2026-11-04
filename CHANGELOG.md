@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — P1-6 / P1-7 follow-up
+
+- Preserve explicit timestamp offsets (including spaced offsets), structured IANA timezone metadata, assumed timezone/year, and canonical UTC values. Reject basic date-only clocks, conflicting zones and non-finite epochs.
+- Diagnose impossible replication chronology and equal-time failure/recovery conflicts. Repeated untimed recovery cannot erase the last known failure clock; stale lag measurements are not presented as fresh. Strict validation includes missing event clocks and unusable replication clocks.
+- Correlate active controller/path failures only on the same explicit device with known cycle starts inside the configurable five-minute default window. DR-target outages escalate explicitly; protected rebuilding drives can be medium when healthy redundancy/no service impact are confirmed.
+- Add an optional 0–100 advisory index from five complete, explicit normalized components, using the review’s proposed weights. It is uncalibrated, does not infer missing inputs, does not override severity, and is excluded from the AI request.
+- Add regression tests, operator examples, and [P1-6/P1-7 evidence](docs/P1_6_7_REVIEW.md). Existing released v0.4.0 assets are unchanged; these additions require the current source checkout.
+
 ## v0.4.0 — P1 reliability and auditable AI
 
 ### Input, identity, and time

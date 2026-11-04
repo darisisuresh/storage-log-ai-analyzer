@@ -22,6 +22,14 @@ An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC
 
 ## Updates
 
+### Unreleased — P1-6 timestamp provenance and P1-7 business impact
+
+Current source adds explicit timezone/year provenance, chronology-conflict diagnostics, repeated-untimed-recovery guards, same-device controller/path correlation, DR-target severity, and an optional explicitly supplied advisory impact index. The index is not calibrated and cannot lower confirmed severity.
+
+[Review evidence and examples](docs/P1_6_7_REVIEW.md) · [Updated operator guide](docs/USER_GUIDE.md#18-p1-6p1-7-source-update)
+
+These source changes are not included in the existing v0.4.0 release downloads.
+
 ### v0.4.0 — P1 fixes: reliable input, chronology, severity, and AI
 
 - **Input and identity:** strict JSONL validation, optional quarantine, and per-device inventory/history mapping.
@@ -258,7 +266,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for adding vendor rules and sanitized fix
 
 ## Limits and incident state
 
-Reports retain resolved history but exclude it from current risk. Correlation uses explicit device/resource identity when available and source-file scope otherwise. Events with usable timestamps are ordered across files before transitions; missing/invalid clock data is diagnosed and cannot silently resolve a timed failure. Vendor-specific semantic validation still requires operator review. Evidence/device samples are limited to five per rule/state group; counts remain exact. See [limits and benchmark evidence](docs/P0_REVIEW.md).
+Reports retain resolved history but exclude it from current risk. Incident grouping uses explicit device/resource identity when available and source-file scope otherwise; controller/path and protection-group escalation require explicit device identity. Events with usable timestamps are ordered across files before transitions; missing/invalid clock data is diagnosed and cannot silently resolve a timed failure. Vendor-specific semantic validation still requires operator review. Evidence/device samples are limited to five per rule/state group; counts remain exact. See [limits and benchmark evidence](docs/P0_REVIEW.md).
 
 ## Limitations
 

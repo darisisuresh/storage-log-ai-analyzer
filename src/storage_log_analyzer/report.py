@@ -26,6 +26,8 @@ def render(report: AnalysisReport, output_format: str) -> str:
             lines.append(f'Replication lag: {item.replication_gap_seconds:g}s; maximum observed lag: {item.max_replication_gap_seconds:g}s. This is not a measurement of data loss.')
         if item.duration_seconds is not None:
             lines.append(f'Observed current-cycle duration: {item.duration_seconds:g}s.')
+        if item.business_risk_score is not None:
+            lines.append(f'Advisory business-impact index: {item.business_risk_score:g}/100; explicitly supplied components: {json.dumps(item.risk_components, sort_keys=True)}. Uncalibrated index, not a probability; it does not override confirmed severity.')
         if markdown:
             lines.append('Evidence (local only):')
             lines.extend('- ' + evidence for evidence in item.evidence)

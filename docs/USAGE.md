@@ -1,3 +1,5 @@
+> Current-source P1-6/P1-7 additions: [clock provenance, impact policies and advisory index](USER_GUIDE.md#18-p1-6p1-7-source-update). Released v0.4.0 downloads remain unchanged.
+
 # Operator procedure
 
 For current strict parsing, inventory, chronology, contextual severity and structured AI behavior, see the [v0.4.0 user guide](USER_GUIDE.md).

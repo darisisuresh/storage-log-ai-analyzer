@@ -15,12 +15,12 @@ import ijson
 from ijson.common import ObjectBuilder
 
 from .models import Event
-from .timestamps import normalize
+from .timestamps import TIMESTAMP, details
+from .impact import components
 from .vendors import detect_component, detect_product, detect_severity, detect_vendor
 
 SUPPORTED_SUFFIXES = {'.log', '.txt', '.json', '.jsonl', '.csv'}
 MAX_RECORD = 1024 * 1024
-TIMESTAMP = re.compile(r'(?P<ts>\d{4}-\d{2}-\d{2}[T ][0-9:.+-]+Z?|[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})')
 DEVICE = re.compile(r'\b(?:array|hostname|host|device|system)(?:[_ -]?(?:id|name))?\s*[:=]\s*["\']?([\w.:-]+)', re.I)
 RESOURCE = re.compile(r'\b(disk|drive|ssd|nvme|controller|node|port|volume|lun|pool)\s*(?:id\s*[:=]?\s*|[#: =]\s*)?([\w.-]+)', re.I)
 RESOURCE_STOP = {'failure', 'failures', 'failed', 'healthy', 'cleared', 'restored', 'recovered', 'offline', 'online', 'is', 'was', 'has', 'not', 'error', 'errors', 'degraded', 'critical', 'full'}
@@ -213,9 +213,12 @@ def iter_file(path: Path, vendor_override: str = 'auto', *, strict_format=False,
     for number, text, row, format_error in _records(path, strict_format, on_format_error):
         row = row or {}
         message = str(row.get('message') or row.get('msg') or row.get('description') or text)
-        timestamp_match = TIMESTAMP.search(text)
+        # Do not borrow an event clock from unrelated serialized metadata, such
+        # as last_successful_replication, when timestamp/time is absent.
+        timestamp_match = TIMESTAMP.search(message)
         original = row.get('timestamp', row.get('time', timestamp_match['ts'] if timestamp_match else None))
-        timestamp, timestamp_status = normalize(original, assume_timezone, assume_year)
+        clock = details(original, assume_timezone, assume_year, row.get("timezone"))
+        timestamp, timestamp_status = clock.utc, clock.status
         raw_severity = str(row.get('severity') or row.get('level') or '').lower()
         severity = raw_severity if raw_severity in {'critical', 'high', 'medium', 'low'} else detect_severity(text)
         explicit_vendor = str(row.get('vendor', '')).lower()
@@ -230,7 +233,7 @@ def iter_file(path: Path, vendor_override: str = 'auto', *, strict_format=False,
         device, resource = _identity(row, message)
         if len(device or "") > 256 or len(resource) > 256 or len(str(original or "")) > 128:
             raise ValueError(f"{path}:{number}: oversized identity or timestamp field")
-        yield Event(timestamp, vendor, detect_product(message), severity, detect_component(message), message, str(path), number, device, resource, str(original) if original is not None else None, timestamp_status, format_error, vendor_source, _context(row, message, assume_timezone, assume_year))
+        yield Event(timestamp, vendor, detect_product(message), severity, detect_component(message), message, str(path), number, device, resource, str(original) if original is not None else None, timestamp_status, format_error, vendor_source, _context(row, message, assume_timezone, assume_year), clock.original_timezone, clock.assumed_timezone, clock.assumed_year)
 
 
 def parse_file(path: Path, vendor_override: str = 'auto') -> list[Event]:
@@ -266,11 +269,18 @@ def _context(row, message, zone, year):
         if len(str(group)) > 256:
             raise ValueError('Protection group exceeds 256 characters')
         context['protection_group'] = str(group)
+    if type(row.get('dr_target')) is bool:
+        context['dr_target'] = row['dr_target']
+    if 'risk_components' in row:
+        context['risk_components'] = components(row['risk_components'])
     value = row.get('last_successful_replication')
     if value is not None:
-        stamp, status = normalize(value, zone, year)
-        context['last_successful_replication'] = stamp
-        context['replication_timestamp_status'] = status
+        clock = details(value, zone, year, row.get('timezone'))
+        context['last_successful_replication'] = clock.utc
+        context['replication_timestamp_status'] = clock.status
+        context['replication_timestamp_original'] = str(value)[:128]
+        context['replication_timezone_original'] = clock.original_timezone
+        context['replication_timezone_assumed'] = clock.assumed_timezone
     lag = row.get('replication_lag_seconds')
     if type(lag) in (int, float) and 0 <= lag < 10**12:
         context['replication_lag_seconds'] = lag
