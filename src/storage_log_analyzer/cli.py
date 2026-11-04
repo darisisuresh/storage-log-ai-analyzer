@@ -62,6 +62,13 @@ def _diagnose(event, diagnostics):
         diagnostics['vendor_conflicts'] += 1
 
 
+def _warn_format(diagnostics):
+    rejected = sum(diagnostics.get(key, 0) for key in ('malformed_jsonl', 'non_object_jsonl'))
+    if rejected:
+        print(f'warning: {rejected} invalid JSONL record(s) treated as text; '
+              'use --strict-format to reject them or --quarantine to save them.', file=sys.stderr)
+
+
 def analyze_command(args: argparse.Namespace) -> int:
     try:
         files, events = ingest(Path(args.path), args.vendor, **_scan_options(args))
@@ -76,6 +83,7 @@ def analyze_command(args: argparse.Namespace) -> int:
             _diagnose(event, diagnostics)
 
         findings = evaluate(events, on_event=observed, diagnostics=diagnostics, rpo_target_seconds=args.rpo_target_seconds)
+        _warn_format(diagnostics)
         if not files or not event_count:
             raise ValueError('No supported events found in the input')
         if args.min_severity:
@@ -117,6 +125,7 @@ def summary_command(args: argparse.Namespace) -> int:
             products[event.product or "unknown"] += 1
             severities[event.severity] += 1
             components[event.component] += 1
+        _warn_format(diagnostics)
         data = {"files": len(files), "events": event_count, "vendors": dict(vendors), "products": dict(products), "severities": dict(severities), "components": dict(components), "diagnostics": dict(diagnostics)}
         if args.format == "json":
             result = json.dumps(data, indent=2)
@@ -139,6 +148,7 @@ def validate_command(args: argparse.Namespace) -> int:
             count += 1
             unknown_vendor += event.vendor == "unknown"
             unknown_severity += event.severity == "unknown"
+        _warn_format(diagnostics)
         print(f"Files readable: {len(files)}")
         print(f"Events parsed: {count}")
         print(f"Unknown vendor: {unknown_vendor}")

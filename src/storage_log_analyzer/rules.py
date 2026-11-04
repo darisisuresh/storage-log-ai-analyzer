@@ -109,7 +109,7 @@ def _ordered_events(db, events, diagnostics):
     db.execute('CREATE INDEX event_time_order ON ordered_events(stamp,seq)')
     for raw, in db.execute('SELECT payload FROM ordered_events ORDER BY stamp IS NULL, stamp, seq'):
         event = Event(**json.loads(raw))
-        if event.device and (event.vendor == 'unknown' or event.vendor_source == 'same_device_history'):
+        if event.device and event.vendor_source != 'ambiguous_message' and (event.vendor == 'unknown' or event.vendor_source == 'same_device_history'):
             old = db.execute('SELECT vendor FROM device_vendors WHERE device=?', (event.device.casefold(),)).fetchone()
             if old and old[0] != 'unknown':
                 event.vendor, event.vendor_source = old[0], 'same_device_history'

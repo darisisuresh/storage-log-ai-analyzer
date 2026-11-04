@@ -156,3 +156,36 @@ Do not run AI mode unattended until secrets, retention, cost limits, and inciden
 | `redact FILE -o FILE` | Create a sanitized copy without modifying the original |
 | `rules` | List detection rule IDs, severities, and categories |
 | `vendors` | List supported vendor families |
+
+### Vendor attribution and JSONL validation (P1-4 / P1-5)
+
+All scan commands resolve vendor inheritance using the complete scan's device
+history. A generic event inherits a vendor only from consistent hints for the same
+case-insensitive device identity. Later conflicting hints prevent inheritance,
+including across files; unrelated or unidentified events stay `unknown`. A message
+mentioning multiple vendor families stays unknown unless explicit metadata,
+inventory, or a forced override supplies the vendor. There is no file-wide fallback.
+
+Inventory device names are case-insensitive. Conflicting entries such as `Array-A`
+and `array-a` with different vendors fail validation. Precedence remains forced
+`--vendor`, explicit record vendor, inventory, message hints, consistent history.
+Device names are correlation hints, not authenticated identities.
+
+```sh
+storage-log-analyzer analyze events.jsonl --strict-format --quarantine rejected.jsonl
+storage-log-analyzer summary events.jsonl --strict-format
+storage-log-analyzer validate events.jsonl --strict
+```
+
+Strict mode rejects malformed/non-object JSONL with the physical source line.
+Duplicate keys, including in nested objects, and non-finite numbers (including
+exponent overflow) are malformed. Lenient mode retains invalid records as text,
+counts them in diagnostics, and emits one summary warning on stderr without
+printing the raw record. `--quarantine` saves rejected records to a private file;
+keep it outside a scanned input directory. `validate --strict` implies strict
+format parsing. Blank lines are ignored but still count toward physical line numbers.
+
+Resolving late device hints requires a disk-backed staging pass before events are
+returned. Memory stays bounded; first-result latency and temporary disk use grow
+with input size. `iter_file` remains the incremental parser for integrations that
+need per-record parsing without scan-wide vendor resolution.
