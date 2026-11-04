@@ -156,3 +156,29 @@ Do not run AI mode unattended until secrets, retention, cost limits, and inciden
 | `redact FILE -o FILE` | Create a sanitized copy without modifying the original |
 | `rules` | List detection rule IDs, severities, and categories |
 | `vendors` | List supported vendor families |
+
+### Local redaction controls (P0-2)
+
+`redact` recognizes nested JSON objects and JSONL records and keeps their JSON valid.
+Sensitive schema fields include camelCase, snake_case and hyphenated names for hosts,
+users, tenants, customers, paths, shares, credentials and storage identifiers. Plain
+text also receives pattern-based masking, including IPv6, FQDNs, NAA, IQN and WWN.
+Identity aliases correlate within one export. Each export uses a fresh secret key,
+so aliases cannot be matched across exports or guessed using public identity hashes.
+
+```sh
+storage-log-analyzer redact events.jsonl -o sanitized.jsonl \
+  --sensitive-field storageCluster --allow-value lab-host
+```
+
+Repeat `--sensitive-field` for additional JSON field names, and `--allow-value` for
+exact identity values you explicitly want retained in a local export. Credentials
+remain masked even when their value is allowlisted. These options do not change AI
+requests: the provider still receives only the fixed aggregate schema. Use
+`analyze PATH --ai-preview -o request.json` to inspect that complete request without
+an API call. Findings are bounded structurally, never by cutting serialized JSON.
+
+Local redaction streams one line at a time; use JSONL or single-line JSON records
+for schema-aware processing. Other text uses best-effort pattern masking. Unlabelled
+short names and custom secrets in arbitrary prose may require manual review or an
+additional sensitive schema field. Review local exports before sharing them.
