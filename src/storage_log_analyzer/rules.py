@@ -106,7 +106,9 @@ def _ordered_events(db, events, diagnostics):
             value = event.vendor if not old or old[0] == event.vendor else 'unknown'
             db.execute('INSERT OR REPLACE INTO device_vendors VALUES (?,?)', (key, value))
         db.execute('INSERT INTO ordered_events VALUES (?,?,?)', (seq, event.timestamp, json.dumps(asdict(event))))
-    db.execute('CREATE INDEX event_time_order ON ordered_events(stamp,seq)')
+    # Match the NULL-last expression exactly so playback scans the disk index
+    # instead of sorting full serialized event payloads in a temporary B-tree.
+    db.execute('CREATE INDEX event_time_order ON ordered_events(stamp IS NULL,stamp,seq)')
     for raw, in db.execute('SELECT payload FROM ordered_events ORDER BY stamp IS NULL, stamp, seq'):
         event = Event(**json.loads(raw))
         if event.device and (event.vendor == 'unknown' or event.vendor_source == 'same_device_history'):
@@ -155,14 +157,15 @@ def _evaluate(events, diagnostics, on_event, rpo_target_seconds):
             for event in _ordered_events(db, events, diagnostics):
                 if on_event:
                     on_event(event)
-                for clause in CLAUSES.split(event.message):
+                clauses = CLAUSES.split(event.message)
+                for clause in clauses:
                     for rule in RULES:
                         state = _state(rule, clause)
                         if state is None:
                             continue
                         clause_device, clause_resource = _identity({}, clause)
                         device = clause_device or event.device or ('source:' + event.source)
-                        resource = clause_resource or (event.resource if len(CLAUSES.split(event.message)) == 1 else '')
+                        resource = clause_resource or (event.resource if len(clauses) == 1 else '')
                         if len(device) > 256:
                             device = 'identity-sha256:' + hashlib.sha256(device.encode()).hexdigest()
                         if len(resource) > 256:

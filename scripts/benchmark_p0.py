@@ -1,6 +1,7 @@
 """Reproducible P0 high-cardinality streaming benchmark; no network or customer data."""
 import argparse
 import contextlib
+import csv
 import io
 import json
 import os
@@ -30,9 +31,11 @@ def worker(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--worker')
-    parser.add_argument('--format', choices=['log', 'json'], default='log')
+    parser.add_argument('--format', choices=['log', 'json', 'jsonl', 'csv'], default='log')
     parser.add_argument('--events', type=int, default=1000000)
     args = parser.parse_args()
+    if args.events < 10:
+        parser.error('--events must be at least 10')
     if args.worker:
         worker(args.worker)
         return
@@ -43,12 +46,23 @@ def main():
             with path.open('w') as out:
                 if args.format == 'json':
                     out.write('[')
+                if args.format == 'csv':
+                    writer = csv.DictWriter(out, fieldnames=['timestamp', 'host', 'vendor', 'message'])
+                    writer.writeheader()
                 for number in range(count):
-                    if args.format == 'json':
-                        row = {'timestamp': '2026-11-02T10:00:00Z', 'host': f'array-{number}', 'vendor': 'pure', 'message': 'disk 7 failed'}
-                        out.write((',' if number else '') + json.dumps(row))
+                    # Reverse timestamps force global chronological ordering;
+                    # both sizes still have a unique device for every event.
+                    stamp = f'2026-11-02T10:{59 - (number // 60) % 60:02d}:{59 - number % 60:02d}Z'
+                    if args.format in {'json', 'jsonl', 'csv'}:
+                        row = {'timestamp': stamp, 'host': f'array-{number}', 'vendor': 'pure', 'message': 'disk 7 failed'}
+                        if args.format == 'csv':
+                            writer.writerow(row)
+                        elif args.format == 'jsonl':
+                            out.write(json.dumps(row) + '\n')
+                        else:
+                            out.write((',' if number else '') + json.dumps(row))
                     else:
-                        out.write(f'2026-11-02T10:00:00Z host=array-{number} Pure Storage disk 7 failed\n')
+                        out.write(f'{stamp} host=array-{number} Pure Storage disk 7 failed\n')
                 if args.format == 'json':
                     out.write(']')
             env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')}
