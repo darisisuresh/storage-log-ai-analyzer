@@ -13,7 +13,7 @@ from . import __version__
 from .ai import assess, build_ai_request
 from .ingest import ingest
 from .models import AnalysisReport
-from .privacy import redact
+from .privacy import Redactor
 from .report import render
 from .rules import RULES, evaluate
 
@@ -164,6 +164,7 @@ def redact_command(args: argparse.Namespace) -> int:
         if source.resolve() == destination.resolve():
             raise ValueError("refusing to overwrite the source log; choose a different --output")
         from .ingest import MAX_RECORD
+        redactor = Redactor(allowed_values=args.allow_value, sensitive_fields=args.sensitive_field)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = None
         try:
@@ -173,7 +174,7 @@ def redact_command(args: argparse.Namespace) -> int:
                     while line := incoming.readline(MAX_RECORD + 1):
                         if len(line) > MAX_RECORD:
                             raise ValueError("Input record exceeds 1 MiB")
-                        outgoing.write(redact(line))
+                        outgoing.write(redactor.redact(line))
             os.replace(temporary, destination)
         finally:
             if temporary is not None:
@@ -252,6 +253,8 @@ def build_parser() -> argparse.ArgumentParser:
     redact_parser = subparsers.add_parser("redact", help="create a sanitized copy of a log file")
     redact_parser.add_argument("path")
     redact_parser.add_argument("--output", "-o", required=True)
+    redact_parser.add_argument('--allow-value', action='append', default=[], help='preserve an exact local identity value (repeatable); credentials stay redacted')
+    redact_parser.add_argument('--sensitive-field', action='append', default=[], help='additional sensitive JSON field name (repeatable)')
     redact_parser.set_defaults(func=redact_command)
 
     rule_parser = subparsers.add_parser("rules", help="list built-in detection rules")
