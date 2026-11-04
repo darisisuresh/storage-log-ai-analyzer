@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — P1-6 / P1-7 follow-up
+## Unreleased
+
+- Added a browser upload interface using the existing Python engine, local WebAssembly processing, inline findings, and JSON/Markdown downloads. Includes file limits, cancellation, strict JSONL parsing, and browser integration checks. — P1-6 / P1-7 follow-up
 
 - Preserve explicit timestamp offsets (including spaced offsets), structured IANA timezone metadata, assumed timezone/year, and canonical UTC values. Reject basic date-only clocks, conflicting zones and non-finite epochs.
 - Diagnose impossible replication chronology and equal-time failure/recovery conflicts. Repeated untimed recovery cannot erase the last known failure clock; stale lag measurements are not presented as fresh. Strict validation includes missing event clocks and unusable replication clocks.
