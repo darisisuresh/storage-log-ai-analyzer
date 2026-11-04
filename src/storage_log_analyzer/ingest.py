@@ -20,6 +20,7 @@ from .vendors import detect_component, detect_product, detect_severity, detect_v
 
 SUPPORTED_SUFFIXES = {'.log', '.txt', '.json', '.jsonl', '.csv'}
 MAX_RECORD = 1024 * 1024
+MAX_JSON_NUMBER = 128
 TIMESTAMP = re.compile(r'(?P<ts>\d{4}-\d{2}-\d{2}[T ][0-9:.+-]+Z?|[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})')
 DEVICE = re.compile(r'\b(?:array|hostname|host|device|system)(?:[_ -]?(?:id|name))?\s*[:=]\s*["\']?([\w.:-]+)', re.I)
 RESOURCE = re.compile(r'\b(disk|drive|ssd|nvme|controller|node|port|volume|lun|pool)\s*(?:id\s*[:=]?\s*|[#: =]\s*)?([\w.-]+)', re.I)
@@ -50,10 +51,19 @@ class _JSONReader:
         self.escape = False
         self.length = 0
         self.depth = 0
+        self.number_length = 0
 
     def read(self, size=-1):
         data = self.raw.read(min(size, 65536) if size >= 0 else 65536)
         for char in data:
+            # Bound numeric tokens before ijson can buffer an arbitrarily long
+            # number. Keep the counter across chunks, as for string tokens.
+            if not self.quoted and char in b'0123456789.eE+-':
+                self.number_length += 1
+                if self.number_length > MAX_JSON_NUMBER:
+                    raise ValueError('JSON number exceeds 128 characters')
+            else:
+                self.number_length = 0
             if self.quoted:
                 self.length += 1
                 if self.length > MAX_RECORD:

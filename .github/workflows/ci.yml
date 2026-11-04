@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        format: ["log", "json"]
+        format: ["log", "json", "jsonl", "csv"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
