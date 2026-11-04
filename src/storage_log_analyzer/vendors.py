@@ -41,11 +41,14 @@ COMPONENT_PATTERNS = {
 }
 
 
-def detect_vendor(text: str) -> str:
+def vendor_candidates(text: str) -> list[str]:
     lowered = text.lower()
-    scores = {vendor: sum(lowered.count(hint) for hint in hints) for vendor, hints in VENDOR_HINTS.items()}
-    vendor, score = max(scores.items(), key=lambda item: item[1])
-    return vendor if score else "unknown"
+    return [vendor for vendor, hints in VENDOR_HINTS.items() if any(hint in lowered for hint in hints)]
+
+
+def detect_vendor(text: str) -> str:
+    matches = vendor_candidates(text)
+    return matches[0] if len(matches) == 1 else "unknown"
 
 
 def detect_product(text: str) -> str | None:

@@ -4,10 +4,12 @@ import csv
 import io
 import os
 import json
+import math
 import re
 import sqlite3
 import tempfile
 from contextlib import closing, contextmanager
+from dataclasses import asdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
@@ -16,7 +18,7 @@ from ijson.common import ObjectBuilder
 
 from .models import Event
 from .timestamps import normalize
-from .vendors import detect_component, detect_product, detect_severity, detect_vendor
+from .vendors import detect_component, detect_product, detect_severity, detect_vendor, vendor_candidates
 
 SUPPORTED_SUFFIXES = {'.log', '.txt', '.json', '.jsonl', '.csv'}
 MAX_RECORD = 1024 * 1024
@@ -141,11 +143,27 @@ def _invalid_constant(value):
     raise ValueError('Non-finite JSON number')
 
 
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('Duplicate JSON object key')
+        result[key] = value
+    return result
+
+
+def _finite_float(value):
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError('Non-finite JSON number')
+    return result
+
+
 def _jsonl_value(line):
     reader = _JSONReader(io.BytesIO(line.encode('utf-8')))
     while reader.read(65536):
         pass
-    return json.loads(line, parse_constant=_invalid_constant)
+    return json.loads(line, parse_constant=_invalid_constant, parse_float=_finite_float, object_pairs_hook=_unique_object)
 
 
 def _records(path: Path, strict_format=False, on_format_error=None) -> Iterable:
@@ -223,7 +241,7 @@ def iter_file(path: Path, vendor_override: str = 'auto', *, strict_format=False,
         vendor_source = 'explicit' if vendor != 'unknown' else 'unknown'
         if vendor == 'unknown':
             vendor = detect_vendor(message)
-            vendor_source = 'message' if vendor != 'unknown' else 'unknown'
+            vendor_source = 'message' if vendor != 'unknown' else ('ambiguous_message' if len(vendor_candidates(message)) > 1 else 'unknown')
         if vendor_override != 'auto':
             vendor = vendor_override
             vendor_source = 'override'
@@ -290,7 +308,13 @@ def load_inventory(path):
     for device, metadata in value['devices'].items():
         if len(device) > 256 or not isinstance(metadata, dict) or set(metadata) != {'vendor'} or not isinstance(metadata['vendor'], str) or metadata['vendor'] not in {'pure', 'emc', 'hpe'}:
             raise ValueError('Each inventory device requires one canonical vendor: pure, emc, or hpe')
-    return value['devices']
+    normalized = {}
+    for device, metadata in value['devices'].items():
+        key = device.casefold()
+        if key in normalized and normalized[key] != metadata:
+            raise ValueError('Inventory contains conflicting case-insensitive device names')
+        normalized[key] = metadata
+    return normalized
 
 
 def ingest(path: Path, vendor_override: str = 'auto', *, strict_format=False, assume_timezone='UTC', assume_year=None, inventory=None, quarantine=None):
@@ -308,11 +332,12 @@ def ingest(path: Path, vendor_override: str = 'auto', *, strict_format=False, as
             with closing(sqlite3.connect(str(Path(folder) / 'vendors.db'))) as db, db, _quarantine(quarantine) as rejected:
                 db.execute('PRAGMA cache_size=-1024')
                 db.execute('CREATE TABLE vendors (device TEXT PRIMARY KEY, vendor TEXT)')
+                db.execute('CREATE TABLE pending_events (seq INTEGER PRIMARY KEY, payload TEXT)')
                 for file in files:
                     for event in iter_file(file, vendor_override, strict_format=strict_format, assume_timezone=assume_timezone, assume_year=assume_year, on_format_error=rejected):
                         if event.device and event.vendor_source != 'override':
                             device = event.device.casefold()
-                            entry = configured.get(event.device, configured.get(device))
+                            entry = configured.get(device)
                             if entry and event.vendor != 'unknown' and entry['vendor'] != event.vendor:
                                 event.context['vendor_conflict'] = True
                             if entry and event.vendor_source != 'explicit':
@@ -321,11 +346,19 @@ def ingest(path: Path, vendor_override: str = 'auto', *, strict_format=False, as
                                 old = db.execute('SELECT vendor FROM vendors WHERE device=?', (device,)).fetchone()
                                 learned = event.vendor if not old or old[0] == event.vendor else 'unknown'
                                 db.execute('INSERT OR REPLACE INTO vendors VALUES (?,?)', (device, learned))
-                            else:
-                                old = db.execute('SELECT vendor FROM vendors WHERE device=?', (device,)).fetchone()
-                                if old and old[0] != 'unknown':
-                                    event.vendor, event.vendor_source = old[0], 'same_device_history'
-                        yield event
+                        db.execute('INSERT INTO pending_events(payload) VALUES (?)', (json.dumps(asdict(event)),))
+                # Resolve only after all hints are known. A later conflicting
+                # vendor invalidates inheritance in every command, regardless
+                # of file order. Event storage and the identity map stay on disk.
+                for payload, in db.execute('SELECT payload FROM pending_events ORDER BY seq'):
+                    event = Event(**json.loads(payload))
+                    if event.device and event.vendor == 'unknown' and event.vendor_source == 'unknown':
+                        old = db.execute('SELECT vendor FROM vendors WHERE device=?', (event.device.casefold(),)).fetchone()
+                        if old and old[0] != 'unknown':
+                            event.vendor, event.vendor_source = old[0], 'same_device_history'
+                        elif old:
+                            event.vendor_source = 'conflicting_device_history'
+                    yield event
     def events():
         try:
             yield from _events()
