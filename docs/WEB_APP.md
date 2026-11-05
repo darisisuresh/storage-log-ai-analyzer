@@ -1,6 +1,6 @@
 # Browser log analyzer
 
-Public app: https://storage-log-analyzer.sureshemc12.chatgpt.site
+Public app: https://analyzer.sureshkumardarisi.com
 
 ## Use
 

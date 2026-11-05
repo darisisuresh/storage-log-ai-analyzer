@@ -22,7 +22,7 @@ An open-source, vendor-aware tool for analyzing logs from Pure Storage, Dell EMC
 
 ## Analyze logs in your browser
 
-Open **[Storage Log Analyzer](https://storage-log-analyzer.sureshemc12.chatgpt.site)**, click **Upload logs**, select your files, then click **Analyze logs**. Findings, evidence, recommendations, and downloads appear below the upload area. You can also try the included sample.
+Open **[Storage Log Analyzer](https://analyzer.sureshkumardarisi.com)**, click **Upload logs**, select your files, then click **Analyze logs**. Findings, evidence, recommendations, and downloads appear below the upload area. You can also try the included sample.
 
 LOG, TXT, JSON, JSONL, and CSV are supported, up to 10 files / 20 MiB per browser scan. The same Python engine runs in a WebAssembly worker; log contents are not uploaded to a server or AI provider. The page downloads its runtime on first use. Use the CLI for larger datasets and optional AI analysis. [Browser app details and development](docs/WEB_APP.md).
 
